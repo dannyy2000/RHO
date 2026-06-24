@@ -1,7 +1,6 @@
 "use client";
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
-import { connect, disconnect as stacksDisconnect, isConnected, getLocalStorage } from "@stacks/connect";
 
 interface WalletState {
   address: string | null;
@@ -21,26 +20,39 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [address, setAddress] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isConnected()) {
-      const data = getLocalStorage();
-      const addr = data?.addresses?.stx?.[0]?.address ?? null;
-      setAddress(addr);
-    }
+    import("@stacks/connect").then(({ isConnected, getLocalStorage }) => {
+      try {
+        if (isConnected()) {
+          const data = getLocalStorage();
+          const addr = data?.addresses?.stx?.[0]?.address ?? null;
+          setAddress(addr);
+        }
+      } catch {
+        // wallet not available
+      }
+    }).catch(() => {});
   }, []);
 
   const handleConnect = useCallback(async () => {
     try {
+      const { connect } = await import("@stacks/connect");
       await connect();
+      const { getLocalStorage } = await import("@stacks/connect");
       const data = getLocalStorage();
       const addr = data?.addresses?.stx?.[0]?.address ?? null;
       setAddress(addr);
     } catch {
-      // user cancelled
+      // user cancelled or wallet unavailable
     }
   }, []);
 
-  const handleDisconnect = useCallback(() => {
-    stacksDisconnect();
+  const handleDisconnect = useCallback(async () => {
+    try {
+      const { disconnect } = await import("@stacks/connect");
+      disconnect();
+    } catch {
+      // ignore
+    }
     setAddress(null);
   }, []);
 
