@@ -69,19 +69,62 @@ Ethereum solved the equivalent problem for its native yield (ETH staking rate) t
 
 Rho is an **interest rate swap protocol** built entirely on Stacks using Clarity smart contracts.
 
-Two parties agree on terms. A smart contract holds their collateral and enforces the settlement rules automatically every cycle. Neither party needs to trust the other. The contract is deterministic — its behaviour is fully knowable before either party signs a transaction.
+### How it actually fixes the rate
+
+Here is the key insight people miss: Rho does not intercept your PoX yield. You still stack STX and Bitcoin still goes directly to your wallet from PoX each cycle. What Rho does is run a **separate settlement alongside your stacking** that mathematically cancels out the rate variability.
+
+Every cycle, the contract calculates two numbers on a shared reference amount (the notional):
+
+```
+what the fixed party is owed  = notional × fixed_rate  ÷ 1,000,000
+what the variable party is owed = notional × actual_rate ÷ 1,000,000
+```
+
+Only the **net difference** between these two numbers moves — out of the collateral of whichever party owes more.
+
+**When the actual PoX rate is LOWER than the fixed rate:**
+
+The variable party pays the gap into the fixed party's collateral. The fixed party's PoX earnings were low this cycle, but the swap compensates them for exactly the missing amount. Their combined position (PoX yield + swap top-up) equals the fixed rate they agreed to.
+
+**When the actual PoX rate is HIGHER than the fixed rate:**
+
+The fixed party pays the excess into the variable party's collateral. The fixed party earned more from PoX this cycle, but they pass the excess on. Their combined position (PoX yield minus swap payment) still equals the fixed rate they agreed to.
+
+**The result:** No matter what miners pay this cycle — high competition, low competition, anything in between — the fixed party's net yield is always the rate they locked in. The swap compensates for every deviation, in either direction, automatically.
+
+**A concrete example with numbers:**
+
+```
+Agreed fixed rate:  80 bps  (80 sats per 1,000,000 uSTX per cycle)
+Notional:           10,000,000 uSTX
+
+Cycle A — miners are aggressive, actual rate = 100 bps:
+  Fixed party earns from PoX:      1,000 sats
+  Fixed party owes to swap:        200 sats  (100 - 80 = 20 bps × notional)
+  Fixed party net:                 800 sats  ← exactly 80 bps
+
+Cycle B — miners pull back, actual rate = 55 bps:
+  Fixed party earns from PoX:       550 sats
+  Fixed party receives from swap:   250 sats  (80 - 55 = 25 bps × notional)
+  Fixed party net:                  800 sats  ← exactly 80 bps
+
+In both cycles, the fixed party nets exactly what they agreed to.
+The variable party absorbs all the rate movement — profiting when rates rise, paying when they fall.
+```
+
+Two parties agree on terms. A smart contract holds their collateral and enforces these settlement rules automatically every cycle. Neither party needs to trust the other. The contract is deterministic — its full behaviour is knowable before either party signs a transaction.
 
 ### The two sides of a swap
 
 **Fixed side — the hedger**
 
-You have STX stacked and want certainty. You post a swap offer specifying a fixed BTC yield rate you are willing to lock in, a notional amount, and a duration. You deposit sBTC as collateral. For every PoX cycle that passes, the contract credits you at your fixed rate — regardless of what the actual PoX rate does. If rates crash, you are protected. If rates rise, you pay the difference from your collateral.
+You stack STX and want certainty about your BTC yield. You post a swap offer specifying the fixed rate you want, a notional amount, and a duration. You deposit sBTC as collateral. Every cycle, the swap settles — compensating you when rates fall, passing your excess to the variable party when rates rise. Your effective yield always equals the fixed rate you agreed to.
 
 **Variable side — the speculator**
 
-You believe PoX rates are rising, or you simply want leveraged exposure to PoX yield without needing to stack STX yourself. You accept an open fixed-rate offer and deposit your own sBTC collateral. Each cycle, you receive the actual on-chain PoX rate and owe the fixed rate. If the actual rate exceeds the fixed rate, you profit the spread. If it falls below, you cover the difference from your collateral.
+You believe PoX rates are rising, or you want direct exposure to PoX yield without stacking STX yourself. You accept a fixed-rate offer and deposit sBTC collateral. Every cycle you collect the excess when rates beat the fixed rate, and you cover the gap when they fall below it. You profit from rate volatility — the exact risk the fixed party is hedging away.
 
-**Neither party moves principal.** Only the net difference in yield payments transfers between collateral balances each cycle. This is the defining feature of an interest rate swap.
+**Neither party moves principal.** Only the net difference in yield calculations transfers between collateral balances each cycle. This is the defining feature of an interest rate swap.
 
 ---
 
