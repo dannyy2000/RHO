@@ -3,8 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useWallet } from "@/components/WalletProvider";
-import { request } from "@stacks/connect";
-import { uintCV } from "@stacks/transactions";
 import { NETWORK, CONTRACTS } from "@/lib/stacks";
 import FAQAccordion from "@/components/FAQAccordion";
 
@@ -58,6 +56,8 @@ export default function CreatePage() {
     if (!isValid) return;
     setSubmitting(true);
     try {
+      const { request } = await import("@stacks/connect");
+      const { uintCV } = await import("@stacks/transactions");
       await request("stx_callContract", {
         contract: CONTRACTS.core,
         functionName: "post-offer",
