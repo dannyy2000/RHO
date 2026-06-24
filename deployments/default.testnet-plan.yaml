@@ -1,0 +1,39 @@
+---
+id: 0
+name: Testnet deployment
+network: testnet
+stacks-node: "https://api.testnet.hiro.so"
+bitcoin-node: "http://blockstack:blockstacksystem@bitcoind.testnet.stacks.co:18332"
+plan:
+  batches:
+    - id: 0
+      transactions:
+        - contract-publish:
+            contract-name: sip-010-trait
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            cost: 4370
+            path: contracts/sip-010-trait.clar
+            anchor-block-only: true
+            clarity-version: 2
+        - contract-publish:
+            contract-name: mock-sbtc
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            cost: 8750
+            path: contracts/mock-sbtc.clar
+            anchor-block-only: true
+            clarity-version: 2
+        - contract-publish:
+            contract-name: pox-rate-oracle
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            cost: 20130
+            path: contracts/pox-rate-oracle.clar
+            anchor-block-only: true
+            clarity-version: 2
+        - contract-publish:
+            contract-name: rho-core
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            cost: 109250
+            path: contracts/rho-core.clar
+            anchor-block-only: true
+            clarity-version: 2
+      epoch: "2.1"
