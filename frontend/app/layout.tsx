@@ -21,26 +21,20 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-white text-slate-900">
         <ClientShell>
           <main className="flex-1">{children}</main>
-          <footer className="border-t border-slate-200 py-8 mt-16">
-            <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-400">
-              <span>Rho Protocol &mdash; PoX Interest Rate Swaps on Stacks</span>
-              <div className="flex gap-6">
-                <a
-                  href="https://github.com/libby-coder/rho"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-slate-900 transition-colors"
-                >
-                  GitHub
-                </a>
-                <a
-                  href="https://explorer.hiro.so"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-slate-900 transition-colors"
-                >
-                  Explorer
-                </a>
+          <footer className="border-t border-slate-100 bg-white">
+            <div className="max-w-6xl mx-auto px-5 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-6 h-6 rounded-md bg-slate-900 flex items-center justify-center">
+                  <span className="text-white text-xs font-bold">ρ</span>
+                </div>
+                <span className="text-sm text-slate-500 font-medium">Rho Protocol</span>
+                <span className="text-slate-300 text-sm">—</span>
+                <span className="text-xs text-slate-400">PoX interest rate swaps on Stacks</span>
+              </div>
+              <div className="flex gap-5 text-xs text-slate-400">
+                <a href="https://github.com/dannyy2000/rho" target="_blank" rel="noopener noreferrer" className="hover:text-slate-900 transition-colors font-medium">GitHub</a>
+                <a href="https://explorer.hiro.so" target="_blank" rel="noopener noreferrer" className="hover:text-slate-900 transition-colors font-medium">Explorer</a>
+                <span>Testnet</span>
               </div>
             </div>
           </footer>

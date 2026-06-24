@@ -1,35 +1,33 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useWallet } from "@/components/WalletProvider";
 import { request } from "@stacks/connect";
 import { uintCV } from "@stacks/transactions";
 import { NETWORK, CONTRACTS } from "@/lib/stacks";
+import FAQAccordion from "@/components/FAQAccordion";
 
 const faqs = [
   {
     q: "What is notional?",
-    a: "Notional is the reference amount used to calculate payments — similar to the face value of a bond. It never changes hands. Payments are calculated as notional × rate / 1,000,000 each cycle.",
+    a: "Notional is the reference amount used to calculate payments — similar to the face value of a bond. It never actually moves between wallets. Payments are calculated each cycle as: notional × rate ÷ 1,000,000. A notional of 10,000,000 uSTX at 80 bps = 800 sats per cycle.",
   },
   {
-    q: "What is the fixed rate in bps?",
-    a: "The fixed rate is expressed in basis points (bps), where 1 bps = sats earned per 1,000,000 uSTX per cycle. A rate of 100 bps on 1,000,000 uSTX notional = 100 sats per cycle. Set it at the yield you want to guarantee — if the actual PoX rate falls below this, the variable party pays you the difference.",
+    q: "How do I choose the right fixed rate?",
+    a: "Look at recent PoX cycles on the Stacks Explorer to see where rates have been sitting. Set your rate slightly below recent averages for an easy fill, or at the current rate for full protection. Rates typically range from 50–200 bps. If you set it too high, the offer may sit unfilled.",
   },
   {
-    q: "How do I know what fixed rate to set?",
-    a: "Look at recent PoX cycle data on the Stacks explorer to see the current market rate. Set your fixed rate slightly below the recent average if you want an easy fill, or at the current rate if you want full protection. Rates typically range from 50–200 bps depending on miner competition.",
+    q: "Why is there a recommended collateral amount?",
+    a: "Your collateral must be large enough to cover what you might owe the variable party if the actual PoX rate beats your fixed rate every cycle for the full duration. We suggest 150% of the maximum obligation as a buffer.",
   },
   {
-    q: "How much collateral do I need?",
-    a: "As the fixed party, your collateral covers your obligation to pay the variable party when the actual rate exceeds your fixed rate. The required amount depends on your notional, rate, and duration. A safe rule of thumb: deposit enough to cover 150% of your maximum obligation (notional × fixed rate × duration / 1,000,000).",
-  },
-  {
-    q: "What is a cycle?",
-    a: "A PoX cycle is approximately two weeks (2,100 Bitcoin blocks). The duration field sets how many cycles your swap runs for. A duration of 3 cycles = roughly 6 weeks.",
+    q: "What is a PoX cycle?",
+    a: "One cycle is approximately two weeks — 2,100 Bitcoin blocks. PoX yield is distributed once per cycle. A swap with a duration of 3 cycles runs for roughly 6 weeks.",
   },
   {
     q: "Can I cancel after posting?",
-    a: "Yes — as long as the offer has not been accepted yet. You can cancel from your Dashboard and your collateral will be returned in full.",
+    a: "Yes — as long as the offer has not been accepted by a variable party. Go to your Dashboard and cancel it. Your full collateral is returned immediately.",
   },
 ];
 
@@ -51,7 +49,6 @@ export default function CreatePage() {
   const fixedPaymentPerCycle = n && r ? Math.floor((n * r) / 1_000_000) : null;
   const totalFixedObligation = fixedPaymentPerCycle && d ? fixedPaymentPerCycle * d : null;
   const recommendedCollateral = totalFixedObligation ? Math.ceil(totalFixedObligation * 1.5) : null;
-  const durationWeeks = d ? d * 2 : null;
 
   const isValid = n > 0 && r > 0 && d > 0 && c > 0;
 
@@ -67,7 +64,6 @@ export default function CreatePage() {
         functionArgs: [uintCV(n), uintCV(r), uintCV(d), uintCV(c)],
         network: NETWORK,
       });
-      setSubmitting(false);
       setSubmitted(true);
     } catch {
       setSubmitting(false);
@@ -76,24 +72,24 @@ export default function CreatePage() {
 
   if (submitted) {
     return (
-      <div className="max-w-6xl mx-auto px-6 py-12">
-        <div className="max-w-md">
-          <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center mb-4">
-            <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <div className="min-h-screen bg-white flex items-center justify-center px-5">
+        <div className="max-w-md w-full text-center">
+          <div className="w-14 h-14 rounded-full bg-green-50 border-2 border-green-200 flex items-center justify-center mx-auto mb-5">
+            <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h1 className="text-2xl font-semibold text-slate-900 mb-2">Offer posted</h1>
-          <p className="text-sm text-slate-500 mb-6">
-            Your fixed-rate offer is now live on Rho. Once a variable party accepts it, a swap will be created and settlement will begin at the next PoX cycle.
+          <h1 className="text-2xl font-bold text-slate-900 mb-2">Offer posted</h1>
+          <p className="text-sm text-slate-500 leading-relaxed mb-8">
+            Your fixed-rate offer is live on Rho. Once a variable party accepts, a swap starts and settlement begins from the next PoX cycle.
           </p>
-          <div className="flex gap-3">
-            <a href="/market" className="bg-slate-900 text-white text-sm font-medium px-4 py-2 rounded-md hover:bg-slate-700 transition-colors">
+          <div className="flex gap-3 justify-center">
+            <Link href="/market" className="bg-slate-900 text-white font-semibold px-5 py-2.5 rounded-xl text-sm hover:bg-slate-700 transition-colors">
               View market
-            </a>
-            <a href="/dashboard" className="border border-slate-300 text-slate-700 text-sm font-medium px-4 py-2 rounded-md hover:bg-slate-50 transition-colors">
-              Go to dashboard
-            </a>
+            </Link>
+            <Link href="/dashboard" className="border border-slate-200 text-slate-700 font-semibold px-5 py-2.5 rounded-xl text-sm hover:bg-slate-50 transition-colors">
+              Dashboard
+            </Link>
           </div>
         </div>
       </div>
@@ -101,159 +97,166 @@ export default function CreatePage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-12">
-      <div className="mb-10">
-        <h1 className="text-3xl font-semibold text-slate-900 mb-2">Post a fixed-rate offer</h1>
-        <p className="text-sm text-slate-500 max-w-xl">
-          You are taking the fixed side. You will receive the actual PoX rate each cycle and owe the fixed rate you set below.
-          If the actual rate falls below your fixed rate, the variable party pays you the difference.
-        </p>
+    <div className="bg-white min-h-screen">
+
+      {/* Header */}
+      <div className="border-b border-slate-100">
+        <div className="max-w-6xl mx-auto px-5 py-12">
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Post a fixed-rate offer</h1>
+          <p className="text-sm text-slate-500 max-w-xl">
+            You are taking the fixed side. You lock in a rate you are comfortable with.
+            If the actual PoX rate falls below your fixed rate each cycle — the variable party tops you up.
+            If it rises — you pass the excess to them. No principal changes hands.
+          </p>
+        </div>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-12 items-start">
+      <div className="max-w-6xl mx-auto px-5 py-10">
+        <div className="grid lg:grid-cols-5 gap-10 items-start">
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Form — takes 3 cols */}
+          <form onSubmit={handleSubmit} className="lg:col-span-3 space-y-6">
 
-          <div>
-            <label className="block text-sm font-medium text-slate-900 mb-1">
-              Notional amount <span className="text-slate-400 font-normal">(uSTX)</span>
-            </label>
-            <input
-              type="number"
-              min={1}
-              value={notional}
-              onChange={(e) => setNotional(e.target.value)}
-              placeholder="e.g. 10000000"
-              className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-400"
-            />
-            <p className="text-xs text-slate-400 mt-1.5">
-              The reference amount for calculating payments. 1,000,000 uSTX = 1 STX. This never moves — only the net payment does.
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-900 mb-1">
-              Fixed rate <span className="text-slate-400 font-normal">(bps — sats per 1,000,000 uSTX per cycle)</span>
-            </label>
-            <input
-              type="number"
-              min={1}
-              value={rate}
-              onChange={(e) => setRate(e.target.value)}
-              placeholder="e.g. 100"
-              className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-400"
-            />
-            <p className="text-xs text-slate-400 mt-1.5">
-              The BTC yield rate you want to lock in. Current PoX rates are typically 50–200 bps. Check recent cycle data on the Stacks Explorer.
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-900 mb-1">
-              Duration <span className="text-slate-400 font-normal">(PoX cycles)</span>
-            </label>
-            <input
-              type="number"
-              min={1}
-              max={52}
-              value={duration}
-              onChange={(e) => setDuration(e.target.value)}
-              placeholder="e.g. 3"
-              className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-400"
-            />
-            <p className="text-xs text-slate-400 mt-1.5">
-              How many PoX cycles this swap runs for. 1 cycle ≈ 2 weeks (2,100 Bitcoin blocks).
-              {durationWeeks ? ` ${d} cycle${d > 1 ? "s" : ""} = ~${durationWeeks} weeks.` : ""}
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-900 mb-1">
-              Your collateral <span className="text-slate-400 font-normal">(sBTC sats)</span>
-            </label>
-            <input
-              type="number"
-              min={1}
-              value={collateral}
-              onChange={(e) => setCollateral(e.target.value)}
-              placeholder={recommendedCollateral ? String(recommendedCollateral) : "e.g. 500000"}
-              className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-400"
-            />
-            <p className="text-xs text-slate-400 mt-1.5">
-              sBTC deposited as security for the variable party.
-              {recommendedCollateral
-                ? ` Recommended: ${recommendedCollateral.toLocaleString()} sats (150% of max obligation).`
-                : " Deposited to the contract until the swap closes."}
-            </p>
-          </div>
-
-          <button
-            type="submit"
-            disabled={submitting || (!connected ? false : !isValid)}
-            className="w-full bg-slate-900 text-white text-sm font-medium py-2.5 rounded-md hover:bg-slate-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {submitting ? "Confirming in wallet…" : connected ? "Post offer" : "Connect wallet to post"}
-          </button>
-        </form>
-
-        {/* Live preview */}
-        <div className="space-y-4">
-          <h2 className="text-sm font-semibold text-slate-900">Payment preview</h2>
-          <div className="bg-slate-50 border border-slate-200 rounded-lg divide-y divide-slate-200">
-            <div className="px-4 py-3 flex justify-between text-sm">
-              <span className="text-slate-500">Your fixed payment / cycle</span>
-              <span className="font-mono font-semibold text-slate-900">
-                {fixedPaymentPerCycle !== null ? `${fixedPaymentPerCycle.toLocaleString()} sats` : "—"}
-              </span>
-            </div>
-            <div className="px-4 py-3 flex justify-between text-sm">
-              <span className="text-slate-500">Total fixed obligation</span>
-              <span className="font-mono text-slate-800">
-                {totalFixedObligation !== null ? `${totalFixedObligation.toLocaleString()} sats` : "—"}
-              </span>
-            </div>
-            <div className="px-4 py-3 flex justify-between text-sm">
-              <span className="text-slate-500">Duration</span>
-              <span className="font-mono text-slate-800">
-                {d > 0 ? `${d} cycle${d > 1 ? "s" : ""} (~${durationWeeks} weeks)` : "—"}
-              </span>
-            </div>
-            <div className="px-4 py-3 flex justify-between text-sm">
-              <span className="text-slate-500">Recommended collateral</span>
-              <span className="font-mono text-slate-800">
-                {recommendedCollateral !== null ? `${recommendedCollateral.toLocaleString()} sats` : "—"}
-              </span>
-            </div>
-            <div className="px-4 py-3 bg-amber-50 rounded-b-lg">
-              <p className="text-xs text-amber-700">
-                If the actual PoX rate every cycle is higher than your fixed rate, the variable party profits and your collateral reduces. If lower, you profit the spread.
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-2">
+                Notional amount <span className="text-slate-400 normal-case font-normal tracking-normal">(uSTX — never moves)</span>
+              </label>
+              <input
+                type="number"
+                min={1}
+                value={notional}
+                onChange={(e) => setNotional(e.target.value)}
+                placeholder="10000000"
+                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
+              />
+              <p className="text-xs text-slate-400 mt-2">
+                The reference value used to calculate payments. 1,000,000 uSTX = 1 STX. This never actually moves.
               </p>
             </div>
-          </div>
 
-          <div className="border border-slate-200 rounded-lg p-4">
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-2">How your collateral is used</h3>
-            <p className="text-sm text-slate-500 leading-relaxed">
-              Your sBTC collateral is locked in the Rho contract when you post the offer. If a variable party accepts, it secures their claim against you.
-              Each cycle, the collateral balance adjusts based on who won that cycle. When the swap closes, the remaining balance returns to your wallet.
-            </p>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-2">
+                Fixed rate <span className="text-slate-400 normal-case font-normal tracking-normal">(bps — sats per 1M uSTX per cycle)</span>
+              </label>
+              <input
+                type="number"
+                min={1}
+                value={rate}
+                onChange={(e) => setRate(e.target.value)}
+                placeholder="100"
+                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
+              />
+              <p className="text-xs text-slate-400 mt-2">
+                The BTC yield you want to lock in. Current PoX rates are typically 50–200 bps. Check the Stacks Explorer for recent cycles.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-2">
+                Duration <span className="text-slate-400 normal-case font-normal tracking-normal">(PoX cycles — 1 cycle ≈ 2 weeks)</span>
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={52}
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
+                placeholder="3"
+                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
+              />
+              <p className="text-xs text-slate-400 mt-2">
+                {d > 0 ? `${d} cycle${d > 1 ? "s" : ""} = ~${d * 2} weeks.` : "How many cycles this swap runs before closing."}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-2">
+                Your collateral <span className="text-slate-400 normal-case font-normal tracking-normal">(sBTC sats — locked until swap closes)</span>
+              </label>
+              <input
+                type="number"
+                min={1}
+                value={collateral}
+                onChange={(e) => setCollateral(e.target.value)}
+                placeholder={recommendedCollateral ? String(recommendedCollateral) : "500000"}
+                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
+              />
+              <p className="text-xs text-slate-400 mt-2">
+                {recommendedCollateral
+                  ? `Recommended: ${recommendedCollateral.toLocaleString()} sats (150% of max obligation).`
+                  : "Locked in the contract. Returned when the swap closes."}
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={submitting || (connected && !isValid)}
+              className="w-full bg-slate-900 text-white font-bold py-3.5 rounded-xl text-sm hover:bg-slate-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {submitting ? "Confirming in wallet…" : connected ? "Post offer" : "Connect wallet to post"}
+            </button>
+          </form>
+
+          {/* Live preview — takes 2 cols */}
+          <div className="lg:col-span-2 space-y-4">
+            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Live payment preview</h2>
+
+            <div className="bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden">
+              <div className="divide-y divide-slate-200">
+                {[
+                  { label: "Fixed payment / cycle", value: fixedPaymentPerCycle !== null ? `${fixedPaymentPerCycle.toLocaleString()} sats` : "—" },
+                  { label: "Total fixed obligation", value: totalFixedObligation !== null ? `${totalFixedObligation.toLocaleString()} sats` : "—" },
+                  { label: "Duration", value: d > 0 ? `${d} cycle${d > 1 ? "s" : ""} (~${d * 2}w)` : "—" },
+                  { label: "Recommended collateral", value: recommendedCollateral !== null ? `${recommendedCollateral.toLocaleString()} sats` : "—" },
+                ].map((row) => (
+                  <div key={row.label} className="flex justify-between items-center px-5 py-3.5">
+                    <span className="text-xs text-slate-500">{row.label}</span>
+                    <span className={`text-sm font-mono font-semibold ${row.value === "—" ? "text-slate-300" : "text-slate-900"}`}>
+                      {row.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="bg-amber-50 border-t border-amber-100 px-5 py-4">
+                <p className="text-xs text-amber-800 leading-relaxed">
+                  When actual rate &gt; fixed rate → variable party pockets the excess. When actual rate &lt; fixed rate → variable party tops you up. You always net your fixed rate.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 p-5">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-widest mb-3">What happens to your collateral?</h3>
+              <div className="space-y-3 text-xs text-slate-500 leading-relaxed">
+                <div className="flex gap-2">
+                  <span className="w-4 h-4 rounded-full bg-slate-100 flex-shrink-0 flex items-center justify-center text-slate-400 font-bold">1</span>
+                  <p>Locked in the Rho contract when you post.</p>
+                </div>
+                <div className="flex gap-2">
+                  <span className="w-4 h-4 rounded-full bg-slate-100 flex-shrink-0 flex items-center justify-center text-slate-400 font-bold">2</span>
+                  <p>Adjusts each cycle based on who won the settlement.</p>
+                </div>
+                <div className="flex gap-2">
+                  <span className="w-4 h-4 rounded-full bg-slate-100 flex-shrink-0 flex items-center justify-center text-slate-400 font-bold">3</span>
+                  <p>Returned to your wallet when the swap closes.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* FAQ */}
+        <div className="mt-16 pt-10 border-t border-slate-100">
+          <div className="grid md:grid-cols-3 gap-12">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900 mb-2">Before you post</h2>
+              <p className="text-sm text-slate-500 leading-relaxed">Common questions about posting a fixed-rate offer on Rho.</p>
+            </div>
+            <div className="md:col-span-2">
+              <FAQAccordion items={faqs} />
+            </div>
           </div>
         </div>
       </div>
-
-      {/* FAQ */}
-      <section className="mt-16 pt-10 border-t border-slate-100">
-        <h2 className="text-xl font-semibold text-slate-900 mb-6">Before you post — common questions</h2>
-        <div className="divide-y divide-slate-100 max-w-2xl">
-          {faqs.map((faq, i) => (
-            <div key={i} className="py-5">
-              <h3 className="text-sm font-semibold text-slate-900 mb-2">{faq.q}</h3>
-              <p className="text-sm text-slate-500 leading-relaxed">{faq.a}</p>
-            </div>
-          ))}
-        </div>
-      </section>
     </div>
   );
 }
