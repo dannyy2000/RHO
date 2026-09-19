@@ -8,7 +8,15 @@ const faqs = [
   },
   {
     q: "Why does the rate keep changing?",
-    a: "The rate is driven entirely by miner competition. More miners competing means more BTC paid, which means a higher yield. Fewer miners means a lower yield. The rate changes every two-week cycle with no way to predict it in advance.",
+    a: "Two reasons now. First, miner competition — more miners bidding means more BTC paid out, fewer miners means less. Second, since PoX-5 activated in July 2026, STX-only stackers are paid last: Genesis Bond holders receive their guaranteed rate off the top, and stackers split what remains. So your yield depends not only on what miners spend, but on how large the bond pool is that cycle.",
+  },
+  {
+    q: "What changed for stackers under PoX-5?",
+    a: "Miner BTC used to be split proportionally across every stacker. Now it flows through a waterfall. Genesis Bond holders (paired BTC and STX) are Tranche 1 and are paid a guaranteed target rate first. STX-only stackers are Tranche 2 and receive 85% of whatever is left — the official Stacks docs call this 'residual' yield. A reserve fund takes the other 15%. When miner revenue falls short in a cycle, Tranche 1 is still paid in full, so Tranche 2 absorbs the entire shortfall.",
+  },
+  {
+    q: "Does that actually cost stackers anything today?",
+    a: "Yes, and it is measurable. Miners are currently paying roughly 3 BTC per cycle, about 75 BTC a year. Genesis Bond has around 250 BTC locked at a guaranteed 3%, which is about 7.5 BTC a year claimed ahead of stackers. After the reserve's share, STX-only stackers receive roughly 57 BTC a year instead of 75 — around a 23% reduction. That gap widens every time the bond pool grows.",
   },
   {
     q: "What is an interest rate swap?",
@@ -16,7 +24,7 @@ const faqs = [
   },
   {
     q: "What is the oracle and why is it needed?",
-    a: "The Rho smart contract cannot automatically read Bitcoin transaction data. The oracle is the bridge — it reads how much BTC miners paid each cycle and posts that number into the Stacks contract. The contract then does all the math itself. In Phase 1 the Rho team runs the oracle. Phase 2 replaces this with cryptographic Bitcoin proofs anyone can submit.",
+    a: "The Rho smart contract cannot automatically read Bitcoin transaction data. The oracle is the bridge — each cycle it posts the raw inputs: total BTC paid by miners, the amount owed to Genesis Bond holders ahead of stackers, and total STX stacked. The contract derives the stacker rate from those inputs itself, so the submitted numbers can be checked against the formula rather than taken on trust. In Phase 1 the Rho team runs the oracle. Phase 2 replaces this with cryptographic Bitcoin proofs anyone can submit.",
   },
   {
     q: "What is sBTC?",
@@ -48,9 +56,9 @@ export default function HomePage() {
               The first interest rate swap for Bitcoin PoX yield.
             </h1>
             <p className="text-lg text-slate-500 leading-relaxed mb-8">
-              STX stackers earn real Bitcoin every two weeks — but the rate changes with every cycle.
-              Rho lets you lock in a fixed rate, or take the floating rate and profit when it rises.
-              All on-chain. No middleman.
+              STX stackers earn real Bitcoin every two weeks — but since PoX-5, Genesis Bond holders
+              are paid first and stackers receive only what is left. Rho lets you lock in a fixed
+              rate, or take the floating one and profit when it rises. All on-chain. No middleman.
             </p>
             <div className="flex flex-wrap gap-3">
               <Link href="/market" className="bg-slate-900 text-white font-semibold px-6 py-3 rounded-xl text-sm hover:bg-slate-700 transition-colors">
@@ -70,15 +78,15 @@ export default function HomePage() {
           {[
             {
               label: "The yield is real",
-              body: "Bitcoin miners pay actual BTC to STX stackers every two weeks through Proof of Transfer. This is not a token reward — it is real Bitcoin. Over $500M has been paid out since PoX launched.",
+              body: "Bitcoin miners pay actual BTC to STX stackers every two weeks through Proof of Transfer. This is not a token reward — it is real Bitcoin, and over $500M has been paid out since PoX launched.",
             },
             {
-              label: "The problem is real",
-              body: "The rate changes every cycle based on miner competition. One cycle 4%, the next 2.5%, the cycle after 3.8%. There is no way to plan around it — until now.",
+              label: "The risk just changed",
+              body: "Since PoX-5, Genesis Bond holders are paid a guaranteed rate before STX-only stackers, who now receive only what remains. At roughly 250 BTC bonded that is already about a 23% cut to stacker yield — and it grows as the bond pool does.",
             },
             {
               label: "Nobody built this yet",
-              body: "Pendle Finance built the same mechanism for ETH staking yield on Ethereum and manages over $4 billion. The equivalent on Stacks does not exist. Rho is first.",
+              body: "Pendle Finance built the same mechanism for ETH staking yield on Ethereum and manages billions. Stacks has no derivative layer over PoX yield at all, and the subordination risk is only months old.",
             },
           ].map((c) => (
             <div key={c.label} className="bg-white rounded-2xl border border-slate-200 p-6">

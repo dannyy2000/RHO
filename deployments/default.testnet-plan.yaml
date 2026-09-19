@@ -25,14 +25,14 @@ plan:
         - contract-publish:
             contract-name: pox-rate-oracle
             expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
-            cost: 20130
+            cost: 40880
             path: contracts/pox-rate-oracle.clar
             anchor-block-only: true
             clarity-version: 2
         - contract-publish:
             contract-name: rho-core
             expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
-            cost: 109250
+            cost: 142220
             path: contracts/rho-core.clar
             anchor-block-only: true
             clarity-version: 2

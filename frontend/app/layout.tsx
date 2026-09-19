@@ -8,7 +8,7 @@ const geist = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });
 export const metadata: Metadata = {
   title: "Rho Protocol — PoX Interest Rate Swaps on Stacks",
   description:
-    "Hedge or gain exposure to Bitcoin PoX yield. Rho Protocol lets STX stackers lock in a fixed BTC rate or take the floating PoX rate through on-chain interest rate swaps.",
+    "Hedge the yield risk PoX-5 created. Since Genesis Bond holders are paid ahead of STX-only stackers, stacker yield is now residual and falling. Rho lets stackers lock in a fixed BTC rate through on-chain interest rate swaps.",
 };
 
 export default function RootLayout({

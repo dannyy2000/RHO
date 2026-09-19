@@ -16,8 +16,41 @@ Since PoX-5 activated on July 30, 2026, miner BTC no longer splits proportionall
 
 ---
 
+## Deployed Contracts — Stacks Testnet
+
+All four contracts are live and independently verifiable. Deployed **2026-09-19** from `ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7`.
+
+| Contract | Explorer | Deployment tx |
+|----------|----------|---------------|
+| `rho-core` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core?chain=testnet) | [`15e69dec…`](https://explorer.hiro.so/txid/0x15e69decd8cb1f9a335df614d9f608e263b39d1904a3819048a7f53f93f0fca7?chain=testnet) |
+| `pox-rate-oracle` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.pox-rate-oracle?chain=testnet) | [`7558a1cd…`](https://explorer.hiro.so/txid/0x7558a1cd264b405b0749c67451d8a82b286f554073cb9ccd069559079d35a8e3?chain=testnet) |
+| `mock-sbtc` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.mock-sbtc?chain=testnet) | [`ecf23cd2…`](https://explorer.hiro.so/txid/0xecf23cd2f3cd15904b5c8cd11bacea1f9b6eef3e814c0a25b71fb38a3161d82b?chain=testnet) |
+| `sip-010-trait` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.sip-010-trait?chain=testnet) | [`2f936d9b…`](https://explorer.hiro.so/txid/0x2f936d9b2d62a810cc8dbb29833fc81776d03fcda22ef806fbc451416d355001?chain=testnet) |
+
+**Verify the deployed behaviour without trusting this README.** The pilot caps are readable directly off chain:
+
+```bash
+curl -s -X POST \
+  "https://api.testnet.hiro.so/v2/contracts/call-read/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7/rho-core/get-pilot-caps" \
+  -H "Content-Type: application/json" \
+  -d '{"sender":"ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7","arguments":[]}'
+```
+
+The oracle's live signature confirms the PoX-5 waterfall inputs are in force, not the pre-PoX-5 pro-rata formula:
+
+```bash
+curl -s "https://api.testnet.hiro.so/v2/contracts/interface/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7/pox-rate-oracle" \
+  | grep -o '"name":"submit-cycle-rate".*total-ustx-stacked'
+# → args: cycle, miner-revenue-sats, tranche-1-obligation-sats, total-ustx-stacked
+```
+
+> **Note on the earlier deployment.** These contracts were first deployed on 2026-06-24. Stacks testnet was reset in the interim, which cleared that deployment along with the deployer's balance and transaction history. The addresses above are the current, live deployment and reflect the post-PoX-5 contracts.
+
+---
+
 ## Table of Contents
 
+- [Deployed Contracts](#deployed-contracts--stacks-testnet)
 - [Background — What is PoX yield?](#background--what-is-pox-yield)
 - [The Problem](#the-problem)
 - [The Solution](#the-solution)
