@@ -3,7 +3,7 @@
 > The hedge for Stacks' junior tranche — fixed-rate protection for STX-only stackers against the yield volatility PoX-5's Bitcoin Staking bonds created.
 
 [![Clarinet](https://img.shields.io/badge/Clarinet-3.11.0-orange)](https://github.com/hirosystems/clarinet)
-[![Tests](https://img.shields.io/badge/tests-7%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-10%20passing-brightgreen)](#testing)
 [![Clarity](https://img.shields.io/badge/Clarity-v2-blue)](https://docs.stacks.co/clarity)
 [![Network](https://img.shields.io/badge/network-Stacks%20Testnet-purple)](https://explorer.hiro.so)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -426,6 +426,8 @@ The core swap protocol. Manages the complete lifecycle of offers and swaps. Hold
 | `get-offer-count` | — | Total number of offers created |
 | `get-swap-count` | — | Total number of swaps created |
 | `get-current-pox-cycle` | — | Current PoX cycle |
+| `get-pilot-caps` | — | The five enforced pilot limits (see [Capped Pilot Design](#capped-pilot-design)) |
+| `get-pilot-utilisation` | — | Active notional, active swap count, and remaining headroom on both |
 
 **Error codes:**
 
@@ -441,6 +443,11 @@ The core swap protocol. Manages the complete lifecycle of offers and swaps. Hold
 | `u107` | `ERR-ORACLE-RATE-NOT-FOUND` | Oracle has no rate for this cycle |
 | `u109` | `ERR-ALL-CYCLES-NOT-SETTLED` | Cannot close swap — cycles remain |
 | `u110` | `ERR-INVALID-PARAMS` | A parameter is zero or invalid |
+| `u111` | `ERR-EXCEEDS-NOTIONAL-CAP` | Notional exceeds the per-swap pilot cap |
+| `u112` | `ERR-EXCEEDS-DURATION-CAP` | Duration exceeds the pilot cap |
+| `u113` | `ERR-EXCEEDS-RATE-CAP` | Quoted fixed rate exceeds the sanity bound |
+| `u114` | `ERR-EXCEEDS-TOTAL-NOTIONAL-CAP` | Would push protocol-wide notional past the cap |
+| `u115` | `ERR-EXCEEDS-ACTIVE-SWAP-CAP` | Would exceed the concurrent active swap cap |
 
 ---
 
@@ -523,7 +530,7 @@ npm test
 Expected output:
 ```
 Test Files  4 passed (4)
-     Tests  7 passed (7)
+     Tests  10 passed (10)
 ```
 
 ### Start the frontend
@@ -565,7 +572,9 @@ The test suite covers the full swap lifecycle and all error paths. Tests run aga
 | Double settlement rejection | `rho-core.test.ts` | Attempting to settle the same cycle twice returns `ERR-CYCLE-ALREADY-SETTLED` |
 | Oracle rate not found | `rho-core.test.ts` | Attempting to settle before oracle submits returns `ERR-ORACLE-RATE-NOT-FOUND` |
 | SIP-010 compliance | `mock-sbtc.test.ts` | Token transfer, mint, balance checks |
-| Oracle submission | `pox-rate-oracle.test.ts` | Rate calculation, duplicate rejection, admin check |
+| Notional cap enforced | `rho-core.test.ts` | Offer above the per-swap notional cap returns `ERR-EXCEEDS-NOTIONAL-CAP` |
+| Duration cap enforced | `rho-core.test.ts` | Offer above 13 cycles returns `ERR-EXCEEDS-DURATION-CAP` |
+| Pilot capacity released | `rho-core.test.ts` | Notional and slot return to the pool after a swap closes |
 | Trait conformance | `sip-010-trait.test.ts` | Trait definition loads correctly |
 
 **Verified lifecycle values (from main test):**
@@ -618,6 +627,26 @@ Update the oracle contract owner to a multisig before mainnet deployment.
 
 ---
 
+## Capped Pilot Design
+
+Rho's pilot runs inside hard bounds that are **enforced in the contract as constants, not documented as intentions**. They cannot be raised by the deployer, an admin key, or a governance call. Lifting any cap requires deploying a new contract — a visible, auditable on-chain event.
+
+| Cap | Value | Purpose |
+|-----|-------|---------|
+| Per-swap notional | 1,000,000 STX | No single position can dominate the pilot |
+| Protocol-wide notional | 5,000,000 STX | Ceiling on total simultaneous exposure |
+| Swap duration | 13 cycles (~6 months) | Matches the Genesis Bond term; bounds oracle dependence |
+| Fixed rate | 10,000 bps | Rejects fat-finger and nonsense quotes |
+| Concurrent active swaps | 25 | Keeps the pilot small enough to monitor manually |
+
+**Sizing rationale.** Total PoX miner revenue is currently running at roughly 3 BTC per cycle (~75 BTC/year — see [The Problem](#the-problem)). The caps are set so that the maximum obligation across every open swap stays a small fraction of a single cycle's real yield. A total failure of the pilot is bounded to an amount that cannot be systemically meaningful to any participant or to the wider ecosystem.
+
+**Capacity is released, not consumed permanently.** When a swap closes or is liquidated, its notional and slot return to the available pool. Both exit paths are covered by tests, because a counter that only increments would silently brick the protocol after 25 swaps had ever existed.
+
+**Live utilisation is publicly readable.** Anyone — a reviewer, the frontend, a counterparty — can call `get-pilot-caps` and `get-pilot-utilisation` to see the limits and exactly how full the pilot is, without trusting a dashboard or a claim in this README.
+
+---
+
 ## Security Considerations
 
 **Collateral custody**
@@ -651,7 +680,7 @@ The contracts have no upgrade mechanism. What is deployed is what runs. This is 
 - **Oracle formula updated from pre-PoX-5 pro-rata to Tranche 2 residual calculation** (in progress — see [How the Rate is Calculated](#how-the-rate-is-calculated))
 - Admin oracle submits rates per cycle
 - Automatic settlement and liquidation
-- Capped pilot design: bounded notional and participant caps, published risk controls
+- **Capped pilot design — done, enforced as contract constants** (see [Capped Pilot Design](#capped-pilot-design))
 - Testnet with mock sBTC → mainnet with real sBTC
 
 ### Phase 2 — Trustless Oracle

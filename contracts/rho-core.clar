@@ -20,11 +20,37 @@
 (define-constant ERR-ORACLE-RATE-NOT-FOUND (err u107))
 (define-constant ERR-ALL-CYCLES-NOT-SETTLED (err u109))
 (define-constant ERR-INVALID-PARAMS (err u110))
+(define-constant ERR-EXCEEDS-NOTIONAL-CAP (err u111))
+(define-constant ERR-EXCEEDS-DURATION-CAP (err u112))
+(define-constant ERR-EXCEEDS-RATE-CAP (err u113))
+(define-constant ERR-EXCEEDS-TOTAL-NOTIONAL-CAP (err u114))
+(define-constant ERR-EXCEEDS-ACTIVE-SWAP-CAP (err u115))
 
 ;; Maintenance margin: variable party is liquidated if collateral falls
 ;; below 110% of remaining obligation.
 (define-constant MARGIN-NUMERATOR u110)
 (define-constant MARGIN-DENOMINATOR u100)
+
+;; -- Pilot caps -----------------------------------------------------------
+;; Rho's pilot runs inside hard, contract-enforced bounds. These are
+;; constants, not admin-settable parameters: the deployed contract cannot be
+;; raised past them by anyone, including the deployer. Lifting a cap requires
+;; deploying a new contract, which is a visible, auditable event.
+;;
+;; Sizing rationale: total PoX miner revenue is running at roughly 3 BTC per
+;; cycle (~75 BTC/year). The protocol-wide notional cap is deliberately set so
+;; that the maximum possible obligation across all open swaps stays a small
+;; fraction of a single cycle's real yield, so a total loss of the pilot
+;; cannot be systemically meaningful to any participant.
+
+(define-constant MAX-NOTIONAL-USTX u1000000000000)        ;; 1M STX per swap
+(define-constant MAX-TOTAL-NOTIONAL-USTX u5000000000000)  ;; 5M STX across all active swaps
+(define-constant MAX-DURATION-CYCLES u13)                 ;; ~6 months
+(define-constant MAX-FIXED-RATE-BPS u10000)               ;; sanity bound on quoted rate
+(define-constant MAX-ACTIVE-SWAPS u25)
+
+(define-data-var active-notional-ustx uint u0)
+(define-data-var active-swap-count uint u0)
 
 ;; -- Data -----------------------------------------------------------------
 
@@ -85,6 +111,24 @@
 (define-read-only (get-current-pox-cycle)
   (/ burn-block-height u2100))
 
+;; Pilot caps and current utilisation, readable by anyone.
+(define-read-only (get-pilot-caps)
+  {
+    max-notional-ustx: MAX-NOTIONAL-USTX,
+    max-total-notional-ustx: MAX-TOTAL-NOTIONAL-USTX,
+    max-duration-cycles: MAX-DURATION-CYCLES,
+    max-fixed-rate-bps: MAX-FIXED-RATE-BPS,
+    max-active-swaps: MAX-ACTIVE-SWAPS
+  })
+
+(define-read-only (get-pilot-utilisation)
+  {
+    active-notional-ustx: (var-get active-notional-ustx),
+    active-swap-count: (var-get active-swap-count),
+    notional-headroom-ustx: (- MAX-TOTAL-NOTIONAL-USTX (var-get active-notional-ustx)),
+    swap-headroom: (- MAX-ACTIVE-SWAPS (var-get active-swap-count))
+  })
+
 ;; -- Public functions -----------------------------------------------------
 
 ;; Fixed party posts a rate offer and locks sBTC collateral in escrow.
@@ -101,6 +145,9 @@
     (asserts! (> notional-ustx u0) ERR-INVALID-PARAMS)
     (asserts! (> collateral-sats u0) ERR-INVALID-PARAMS)
     (asserts! (> duration-cycles u0) ERR-INVALID-PARAMS)
+    (asserts! (<= notional-ustx MAX-NOTIONAL-USTX) ERR-EXCEEDS-NOTIONAL-CAP)
+    (asserts! (<= duration-cycles MAX-DURATION-CYCLES) ERR-EXCEEDS-DURATION-CAP)
+    (asserts! (<= fixed-rate-bps MAX-FIXED-RATE-BPS) ERR-EXCEEDS-RATE-CAP)
     (try! (contract-call? .mock-sbtc transfer collateral-sats caller self none))
     (map-set offers { offer-id: new-id }
       {
@@ -127,9 +174,14 @@
     (self (as-contract tx-sender))
     (new-swap-id (+ (var-get swap-nonce) u1))
     (start-cycle (get-current-pox-cycle))
+    (offer-notional (get notional-ustx offer))
+    (new-active-notional (+ (var-get active-notional-ustx) offer-notional))
+    (new-active-count (+ (var-get active-swap-count) u1))
   )
     (asserts! (is-eq (get status offer) u0) ERR-OFFER-NOT-OPEN)
     (asserts! (> variable-collateral-sats u0) ERR-INVALID-PARAMS)
+    (asserts! (<= new-active-notional MAX-TOTAL-NOTIONAL-USTX) ERR-EXCEEDS-TOTAL-NOTIONAL-CAP)
+    (asserts! (<= new-active-count MAX-ACTIVE-SWAPS) ERR-EXCEEDS-ACTIVE-SWAP-CAP)
     (try! (contract-call? .mock-sbtc transfer variable-collateral-sats caller self none))
     (map-set offers { offer-id: offer-id }
       (merge offer { status: u1 }))
@@ -148,6 +200,8 @@
         status: u0
       })
     (var-set swap-nonce new-swap-id)
+    (var-set active-notional-ustx new-active-notional)
+    (var-set active-swap-count new-active-count)
     (print { event: "swap-created", swap-id: new-swap-id, offer-id: offer-id,
              variable-party: caller, start-cycle: start-cycle })
     (ok new-swap-id)))
@@ -211,6 +265,10 @@
             (if (> new-var-col u0)
               (try! (as-contract (contract-call? .mock-sbtc transfer new-var-col tx-sender (get variable-party swap) none)))
               true)
+            (var-set active-notional-ustx (- (var-get active-notional-ustx) notional))
+            (var-set active-swap-count (- (var-get active-swap-count) u1))
+            (var-set active-notional-ustx (- (var-get active-notional-ustx) notional))
+            (var-set active-swap-count (- (var-get active-swap-count) u1))
             (map-set swaps { swap-id: swap-id }
               (merge swap {
                 cycles-settled: new-cycles-settled,
@@ -245,6 +303,8 @@
     (if (> var-col u0)
       (try! (as-contract (contract-call? .mock-sbtc transfer var-col tx-sender (get variable-party swap) none)))
       true)
+    (var-set active-notional-ustx (- (var-get active-notional-ustx) (get notional-ustx swap)))
+    (var-set active-swap-count (- (var-get active-swap-count) u1))
     (map-set swaps { swap-id: swap-id }
       (merge swap { status: u1, fixed-collateral: u0, variable-collateral: u0 }))
     (print { event: "swap-closed", swap-id: swap-id })

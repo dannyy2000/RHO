@@ -154,6 +154,65 @@ describe("Rho Protocol", () => {
     expect(result).toBeErr(Cl.uint(105)); // ERR-CYCLE-ALREADY-SETTLED
   });
 
+  it("rejects an offer above the per-swap notional cap", () => {
+    simnet.callPublicFn("mock-sbtc", "mint", [Cl.uint(5_000_000), Cl.principal(wallet1)], deployer);
+
+    // MAX-NOTIONAL-USTX is 1,000,000,000,000 (1M STX) — one uSTX over must fail
+    const { result } = simnet.callPublicFn(
+      "rho-core",
+      "post-offer",
+      [Cl.uint(1_000_000_000_001), Cl.uint(100), Cl.uint(1), Cl.uint(1_000_000)],
+      wallet1
+    );
+    expect(result).toBeErr(Cl.uint(111)); // ERR-EXCEEDS-NOTIONAL-CAP
+  });
+
+  it("rejects an offer above the duration cap", () => {
+    simnet.callPublicFn("mock-sbtc", "mint", [Cl.uint(5_000_000), Cl.principal(wallet1)], deployer);
+
+    // MAX-DURATION-CYCLES is 13 (~6 months)
+    const { result } = simnet.callPublicFn(
+      "rho-core",
+      "post-offer",
+      [Cl.uint(1_000_000), Cl.uint(100), Cl.uint(14), Cl.uint(1_000_000)],
+      wallet1
+    );
+    expect(result).toBeErr(Cl.uint(112)); // ERR-EXCEEDS-DURATION-CAP
+  });
+
+  it("releases pilot capacity when a swap closes", () => {
+    simnet.callPublicFn("mock-sbtc", "mint", [Cl.uint(10_000_000), Cl.principal(wallet1)], deployer);
+    simnet.callPublicFn("mock-sbtc", "mint", [Cl.uint(10_000_000), Cl.principal(wallet2)], deployer);
+
+    simnet.callPublicFn("rho-core", "post-offer",
+      [Cl.uint(1_000_000), Cl.uint(100), Cl.uint(1), Cl.uint(1_000_000)], wallet1);
+    simnet.callPublicFn("rho-core", "accept-offer", [Cl.uint(1), Cl.uint(2_000_000)], wallet2);
+
+    // While active, the swap consumes one slot and its notional
+    const during = simnet.callReadOnlyFn("rho-core", "get-pilot-utilisation", [], deployer).result;
+    expect(during).toBeTuple({
+      "active-notional-ustx": Cl.uint(1_000_000),
+      "active-swap-count": Cl.uint(1),
+      "notional-headroom-ustx": Cl.uint(4_999_999_000_000),
+      "swap-headroom": Cl.uint(24),
+    });
+
+    simnet.callPublicFn("pox-rate-oracle", "submit-cycle-rate",
+      [Cl.uint(0), Cl.uint(300), Cl.uint(64), Cl.uint(1_000_000)], deployer);
+    simnet.callPublicFn("rho-core", "settle-cycle", [Cl.uint(1), Cl.uint(0)], deployer);
+    simnet.callPublicFn("rho-core", "close-swap", [Cl.uint(1)], deployer);
+
+    // After closing, capacity must return to full — otherwise the pilot
+    // would permanently fill up after 25 swaps had ever existed.
+    const after = simnet.callReadOnlyFn("rho-core", "get-pilot-utilisation", [], deployer).result;
+    expect(after).toBeTuple({
+      "active-notional-ustx": Cl.uint(0),
+      "active-swap-count": Cl.uint(0),
+      "notional-headroom-ustx": Cl.uint(5_000_000_000_000),
+      "swap-headroom": Cl.uint(25),
+    });
+  });
+
   it("rejects settlement when oracle has no data for the cycle", () => {
     simnet.callPublicFn("mock-sbtc", "mint", [Cl.uint(5_000_000), Cl.principal(wallet1)], deployer);
     simnet.callPublicFn("mock-sbtc", "mint", [Cl.uint(5_000_000), Cl.principal(wallet2)], deployer);
