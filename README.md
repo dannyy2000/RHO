@@ -1,6 +1,6 @@
 # Rho Protocol
 
-> The first interest rate swap protocol for Bitcoin PoX yield on Stacks.
+> The hedge for Stacks' junior tranche — fixed-rate protection for STX-only stackers against the yield volatility PoX-5's Bitcoin Staking bonds created.
 
 [![Clarinet](https://img.shields.io/badge/Clarinet-3.11.0-orange)](https://github.com/hirosystems/clarinet)
 [![Tests](https://img.shields.io/badge/tests-7%20passing-brightgreen)](#testing)
@@ -10,9 +10,9 @@
 
 ---
 
-Bitcoin miners pay real BTC to STX stackers every two weeks through Proof of Transfer (PoX). The rate changes every cycle depending on miner competition. Nobody can plan around it, hedge against it, or price it into a deal — because there has never been a product that lets you trade it.
+Since PoX-5 activated on July 30, 2026, miner BTC no longer splits proportionally across all STX stackers. It flows through a waterfall: Genesis Bond holders (paired BTC+STX, "Tranche 1") get a guaranteed target rate first; STX-only stackers — the vast majority of the network, "Tranche 2" — split whatever's left. Stacks' own documentation calls this **residual** yield. The senior tranche is fixed. The junior tranche absorbs all the variability, now on top of a guaranteed obligation sitting ahead of it in line.
 
-**Rho fixes that.** It lets one party lock in a guaranteed fixed BTC yield rate while a counterparty takes the floating PoX rate — all settled automatically on-chain through Clarity smart contracts, with no custodian, no off-chain settlement, and no external price oracle.
+**Rho fixes that for the junior tranche.** It lets one party lock in a guaranteed fixed BTC yield rate on their STX-only stacking position while a counterparty takes the floating residual rate — all settled automatically on-chain through Clarity smart contracts, with no custodian, no off-chain settlement, and no external price oracle.
 
 ---
 
@@ -40,14 +40,19 @@ Bitcoin miners pay real BTC to STX stackers every two weeks through Proof of Tra
 
 ## Background — What is PoX yield?
 
-Stacks uses **Proof of Transfer (PoX)** as its consensus mechanism. Instead of burning electricity or tokens, Bitcoin miners who want to mine Stacks blocks must pay **real BTC** to a pool of STX stackers. This creates a native Bitcoin yield for anyone who holds and stacks STX — not a new token, not a synthetic — real, on-chain Bitcoin.
+Stacks uses **Proof of Transfer (PoX)** as its consensus mechanism. Bitcoin miners who want to mine Stacks blocks must pay **real BTC** to STX stackers. This creates a native Bitcoin yield for anyone who holds and stacks STX — not a new token, not a synthetic — real, on-chain Bitcoin.
 
-The yield is determined entirely by miner competition:
+Until PoX-5, that BTC was split proportionally: every stacker received a share of the pot equal to their share of all stacked STX. Simple, but the *total* pot still moved every cycle based on miner competition, so individual yield floated cycle to cycle.
 
-- More miners competing → more BTC paid → higher yield
-- Fewer miners competing → less BTC paid → lower yield
+### What changed on July 30, 2026
 
-PoX cycles run every **2,100 Bitcoin blocks** (approximately two weeks). At the end of each cycle, the total BTC paid by all miners is distributed proportionally to all STX stackers for that cycle.
+PoX-5 introduced **Bitcoin Staking** — a second way to earn PoX yield, via protocol bonds branded "Genesis Bond." Participants pair BTC held on Bitcoin L1 with STX and receive a **guaranteed target rate** (3% BTC APY at launch) for a fixed 6-month term. To fund that guarantee, PoX-5 restructured the entire payout waterfall into three tranches, paid **in order**, not proportionally:
+
+1. **Tranche 1 — Protocol bonds.** Paid their target rate first, off the top of miner revenue.
+2. **Tranche 2 — STX-only stackers.** Everyone stacking STX without a paired bond. Receives 85% of whatever miner revenue remains *after* Tranche 1 is paid — the official Stacks docs describe this explicitly as "residual" yield.
+3. **Tranche 3 — Reserve fund.** The remaining 15%, held to buffer Tranche 1 in low-revenue cycles.
+
+Genesis Bond is currently whitelisted to vetted institutional "anchor participants" during a roughly 12-month bootstrap; Stacks' own roadmap has PoX-6 opening it to a permissionless auction, expected 6–12 months out. Until then, Tranche 2 — everyone who isn't a whitelisted anchor — is where nearly all STX stackers sit.
 
 Over the lifetime of PoX, more than **$500 million in BTC** has been paid out to stackers. The yield is real, Bitcoin-native, and directly observable on-chain.
 
@@ -55,13 +60,15 @@ Over the lifetime of PoX, more than **$500 million in BTC** has been paid out to
 
 ## The Problem
 
-The PoX yield rate is variable. It changes every two weeks. One cycle you earn 4%, the next 2.5%, the cycle after that 3.8%. The rate is entirely driven by how many miners are competing in any given two-week window — a number that no one can predict with certainty.
+Tranche 2 yield is now **structurally more volatile than it was before PoX-5**, for a reason that has nothing to do with miner competition: it's paid last.
 
-For individual stackers, this is inconvenient. For institutions committing large amounts of capital to the Stacks ecosystem through the new PoX-5 program, it is a dealbreaker. You cannot underwrite a financial product, plan a treasury strategy, or make a capital commitment without knowing what yield you will receive.
+If miner revenue dips in a cycle, Tranche 1 still receives its guaranteed rate — that is the entire point of the guarantee. Tranche 2 absorbs the *entire* shortfall, because it only ever receives what's left over. As the Genesis Bond allocation grows, so does the size of the guaranteed claim sitting ahead of Tranche 2 in the payout line — meaning Tranche 2's exposure gets *worse* the more successful Genesis Bond becomes, not better.
 
-**There is currently no product on any Bitcoin Layer 2 that solves this.**
+Nobody in Tranche 2 has a way to hedge this. You cannot underwrite a treasury strategy, plan around a capital commitment, or offer STX-only stacking as a predictable product to anyone else — because the rate you actually receive now depends on both miner competition *and* how large the bond pool is that cycle, and no product exists to separate that risk from your position.
 
-Ethereum solved the equivalent problem for its native yield (ETH staking rate) through protocols like Pendle Finance and Notional Finance, which now manage billions in TVL. The Stacks ecosystem has the underlying yield primitive — and no derivative layer on top of it.
+**There is currently no hedging product for Tranche 2 stackers on any Bitcoin Layer 2.** This problem is roughly two months old — it did not exist before PoX-5 activated on July 30, 2026 — which is a direct answer to "why doesn't this already exist."
+
+Ethereum solved the equivalent problem for its native yield (ETH staking rate) through protocols like Pendle Finance, which now manages billions in TVL hedging validator yield variance. Stacks now has an analogous — arguably sharper, since it's a two-sided tranche structure rather than a single floating rate — problem, and no derivative layer on top of it.
 
 ---
 
@@ -130,32 +137,30 @@ You believe PoX rates are rising, or you want direct exposure to PoX yield witho
 
 ## How the Rate is Calculated
 
-The PoX yield rate is derived from two numbers, both observable on-chain, requiring no external price feed or oracle operator:
-
-| Input | Source |
-|-------|--------|
-| Total BTC paid by miners in the cycle | Bitcoin blockchain (submitted to oracle in Phase 1; Bitcoin tx proofs in Phase 2) |
-| Total uSTX stacked in the cycle | Stacks blockchain — readable from PoX-4 contract directly |
-
-**Oracle formula — rate per cycle:**
+The Tranche 2 residual rate is a function of three on-chain quantities:
 
 ```
-rate_bps = (btc_reward_sats × 1,000,000) ÷ total_ustx_stacked
+tranche_2_pool_sats = (miner_revenue_sats − tranche_1_obligation_sats) × 0.85
+rate_bps            = (tranche_2_pool_sats × 1,000,000) ÷ total_ustx_stacked_tranche_2
 ```
 
-This gives the rate in **basis points (bps)**: satoshis earned per 1,000,000 uSTX stacked per cycle. It is a self-contained unit that requires no BTC/STX price feed to interpret.
+where `tranche_1_obligation_sats` is the guaranteed payout owed to active protocol bonds that cycle (bonded BTC × each bond's target rate).
 
-**Settlement formula — payment per cycle:**
+**Open technical question — flagged, not yet resolved.** SIP-045 confirms the PoX-5 contract exposes the reserve fund balance on-chain, but the published spec does not document public read-only functions for bond capacity, target rate, or per-cycle Tranche 1 obligations. Resolving this against the deployed PoX-5 reference contract is active, in-progress work — see [Roadmap, Phase 1](#phase-1--bilateral-grant-scope-now). This is a deliberate, disclosed gap rather than an assumption baked silently into the contract: Phase 1 sources it the same way PoX-4 data was sourced originally (admin-submitted, cross-checked against what's publicly verifiable), and Phase 2 moves to fully trustless sourcing once the necessary read functions are confirmed.
+
+The previous version of this oracle computed a naive pro-rata share across *all* stacked STX — the correct formula before PoX-5, and no longer the correct formula after it. That calculation is being replaced, not patched, precisely because it silently overstates Tranche 2 yield by the full size of the Tranche 1 obligation.
+
+**Settlement formula — payment per cycle (unchanged by the above):**
 
 ```
 payment_sats = notional_ustx × rate_bps ÷ 1,000,000
 ```
 
-Run once for the fixed rate, once for the actual rate. The net difference is the transfer between parties.
+Run once for the fixed rate, once for the actual Tranche 2 rate. The net difference is the transfer between parties.
 
 ### Why no external oracle?
 
-The Ethereum equivalent (Pendle Boros) depends on Chainlink to report the staking rate. If Chainlink fails, goes stale, or reports incorrect data, every settlement on the protocol is wrong. Rho reads from the blockchain itself. The oracle in Phase 1 is admin-assisted but the rate calculation happens inside the contract — an admin cannot fabricate a rate without submitting numbers that contradict on-chain PoX data. Phase 2 replaces admin submission entirely with Clarity's native `get-burn-block-info?` to verify Bitcoin transaction proofs.
+The Ethereum equivalent (Pendle Boros) depends on Chainlink to report the staking rate. If Chainlink fails, goes stale, or reports incorrect data, every settlement on the protocol is wrong. Rho reads from the blockchain itself. The oracle in Phase 1 is admin-assisted but the rate calculation happens inside the contract — an admin cannot fabricate a rate without submitting numbers that contradict on-chain PoX-5 data. Phase 2 replaces admin submission entirely with Clarity's native `get-burn-block-info?` to verify Bitcoin transaction proofs.
 
 ---
 
@@ -187,17 +192,18 @@ The variable party's sBTC is locked. An active swap is created starting from the
 
 ### Step 3 — Oracle posts the cycle rate
 
-After a PoX cycle completes, the oracle admin submits the BTC rewards paid and the total STX stacked:
+After a PoX cycle completes, the oracle admin submits the raw waterfall inputs — total miner revenue, the amount already owed to Tranche 1 (Genesis Bond) holders, and total Tranche 2 (STX-only) stacked STX. The contract derives the pool and rate on-chain, so the submission is auditable against the formula rather than trusted directly:
 
 ```clarity
 (submit-cycle-rate
-  cycle:              u85
-  btc-reward-sats:    u800000000     ;; 8 BTC paid by miners this cycle
-  total-ustx-stacked: u10000000000000 ;; 10 billion STX stacked
+  cycle:                      u85
+  miner-revenue-sats:         u800000000      ;; 8 BTC paid by miners this cycle
+  tranche-1-obligation-sats:  u300000000      ;; 3 BTC owed to Genesis Bond holders this cycle
+  total-ustx-stacked:         u10000000000000 ;; 10 billion uSTX held by Tranche 2 stackers
 )
 ```
 
-The contract calculates and stores the rate: `800,000,000 × 1,000,000 ÷ 10,000,000,000,000 = 80 bps`.
+The contract derives: post-Tranche-1 = `800,000,000 − 300,000,000 = 500,000,000` sats → Tranche 2 pool = `500,000,000 × 85 ÷ 100 = 425,000,000` sats → rate = `425,000,000 × 1,000,000 ÷ 10,000,000,000,000 = 42.5`, floored by Clarity's integer division to **42 bps**.
 
 ### Step 4 — Settlement runs (anyone can call)
 
@@ -339,16 +345,18 @@ A SIP-010 compliant fungible token for testnet use. Freely mintable — anyone c
 
 ### `pox-rate-oracle.clar`
 
-Stores verified PoX yield rates for each cycle. The admin (contract deployer) submits the raw BTC reward and total STX stacked after each cycle. The contract calculates and stores the rate.
+Stores verified PoX-5 Tranche 2 (STX-only staker) yield rates for each cycle. The admin (contract deployer) submits the raw waterfall inputs after each cycle; the contract derives the Tranche 2 pool and rate on-chain, so the submission is auditable against the formula rather than trusted directly. See [How the Rate is Calculated](#how-the-rate-is-calculated).
 
 **Data stored per cycle:**
 
 ```clarity
 {
-  btc-reward-sats:     uint,   ;; total BTC paid by miners
-  total-ustx-stacked:  uint,   ;; total uSTX stacked that cycle
-  rate-bps:            uint,   ;; calculated rate in bps
-  submitted-at:        uint    ;; burn block height at submission
+  miner-revenue-sats:        uint,   ;; total BTC paid by miners
+  tranche-1-obligation-sats: uint,   ;; guaranteed payout owed to Genesis Bond holders
+  tranche-2-pool-sats:       uint,   ;; derived: (miner-revenue - tranche-1-obligation) × 85%
+  total-ustx-stacked:        uint,   ;; total uSTX held by Tranche 2 (STX-only) stackers
+  rate-bps:                  uint,   ;; derived rate in bps
+  submitted-at:               uint   ;; burn block height at submission
 }
 ```
 
@@ -356,7 +364,7 @@ Stores verified PoX yield rates for each cycle. The admin (contract deployer) su
 
 | Function | Access | Parameters | Description |
 |----------|--------|-----------|-------------|
-| `submit-cycle-rate` | Admin only | `cycle uint`, `btc-reward-sats uint`, `total-ustx-stacked uint` | Submit data for a completed cycle; calculates and stores rate |
+| `submit-cycle-rate` | Admin only | `cycle uint`, `miner-revenue-sats uint`, `tranche-1-obligation-sats uint`, `total-ustx-stacked uint` | Submit raw inputs for a completed cycle; derives and stores the Tranche 2 pool and rate |
 
 **Read-only functions:**
 
@@ -374,6 +382,7 @@ Stores verified PoX yield rates for each cycle. The admin (contract deployer) su
 | `u200` | `ERR-NOT-AUTHORIZED` | Caller is not the contract owner |
 | `u201` | `ERR-CYCLE-RATE-EXISTS` | Rate for this cycle already submitted |
 | `u203` | `ERR-ZERO-STACKED` | `total-ustx-stacked` cannot be zero |
+| `u204` | `ERR-OBLIGATION-EXCEEDS-REVENUE` | `tranche-1-obligation-sats` cannot exceed `miner-revenue-sats` |
 
 ---
 
@@ -639,8 +648,10 @@ The contracts have no upgrade mechanism. What is deployed is what runs. This is 
 
 - Peer-to-peer offer matching
 - Fixed party posts, variable party accepts
+- **Oracle formula updated from pre-PoX-5 pro-rata to Tranche 2 residual calculation** (in progress — see [How the Rate is Calculated](#how-the-rate-is-calculated))
 - Admin oracle submits rates per cycle
 - Automatic settlement and liquidation
+- Capped pilot design: bounded notional and participant caps, published risk controls
 - Testnet with mock sBTC → mainnet with real sBTC
 
 ### Phase 2 — Trustless Oracle
@@ -680,13 +691,19 @@ This protocol makes sense precisely because Stacks is the only chain where you c
 
 ## Grant Context
 
-Rho was built for the **Stacks Endowment Q2 2026 Getting Started Grant** ($10,000 — DeFi & Perps theme).
+Rho applied for the **Stacks Endowment Q2 2026 Getting Started Grant** (DeFi & Perps theme) and was **not funded**. The review feedback (July 7, 2026) was specific: the contracts, testing history, deployment status, and PoX-related assumptions weren't mature enough to fund a mainnet-bound interest rate swap product, given the risk profile of a collateralized product with oracle inputs and sBTC settlement. The feedback asked for: verifiable deployed contracts, meaningful testnet usage or simulation history, updated PoX assumptions based on the current protocol roadmap, a clearly documented oracle and settlement model, a capped pilot design with risk controls, and evidence of sustained development.
 
-| Milestone | Amount | Target | Deliverable |
-|-----------|--------|--------|-------------|
-| M1 | $2,000 | Now | Contracts deployed on Stacks testnet. All tests passing. Public repo. Frontend live on Vercel. |
-| M2 | $3,000 | ~6 weeks | Mainnet deployment with real sBTC. 5 verified end-to-end swaps on mainnet with transaction hashes. |
-| M3 | $5,000 | ~12 weeks | 3 real STX stackers with active mainnet positions. $5,000 notional in active swaps. Community write-up published. |
+Since that rejection, PoX-5 activated (July 30, 2026) and restructured PoX yield into the three-tranche waterfall described above — which changed Rho's own thesis, not just its technical assumptions. The Q2 pitch targeted generic "PoX yield is floating" risk; Stacks' own Genesis Bond product now addresses a version of that for whitelisted anchors. Rho's Q3 application targets the risk Genesis Bond's launch *created* rather than solved: Tranche 2 (STX-only stacker) yield, now residual and structurally more volatile than before PoX-5, with no hedging instrument available to the stackers who bear it.
+
+This is Rho's response to the Q2 feedback, applying to the **Stacks Endowment Q3 2026 grant cycle** (Bitcoin Staking & sBTC Utility track):
+
+| Milestone | Target | Deliverable |
+|-----------|--------|-------------|
+| M1 | Now | Oracle updated to the PoX-5 Tranche 2 residual formula (replacing the pre-PoX-5 pro-rata calculation). Capped pilot design published — bounded notional, participant caps, documented risk controls. Tranche 1 data-sourcing verified against the deployed PoX-5 reference contract. |
+| M2 | ~6 weeks | Meaningful testnet usage: scripted multi-cycle simulation run against real observed PoX-5 tranche data, published with transaction hashes — not just unit tests. |
+| M3 | ~12 weeks | Mainnet deployment with real sBTC. Verified end-to-end swaps hedging real Tranche 2 exposure, with a public post-mortem of the Q2→Q3 gap and what changed. |
+
+Funding amounts to be proposed through the Q3 application portal; the Q3 2026 announcement does not disclose fixed track amounts in advance.
 
 ---
 

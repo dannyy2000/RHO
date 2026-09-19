@@ -48,15 +48,18 @@ describe("Rho Protocol", () => {
     }));
 
     // ── Step 3: oracle admin submits cycle 0 rate ────────────────────────
-    // btc-reward = 200 sats, total-ustx = 1,000,000 → rate = 200
+    // miner-revenue = 300 sats, tranche-1-obligation = 64 sats (paid to
+    // Genesis Bond holders first) → post-Tranche-1 = 236 sats
+    // tranche-2-pool = floor(236 × 85 / 100) = 200 sats (Tranche 2's 85% share)
+    // total-ustx = 1,000,000 → rate = 200
     // (highly simplified testnet values — real PoX uses billions of uSTX)
     const { result: oracleResult } = simnet.callPublicFn(
       "pox-rate-oracle",
       "submit-cycle-rate",
-      [Cl.uint(0), Cl.uint(200), Cl.uint(1_000_000)],
+      [Cl.uint(0), Cl.uint(300), Cl.uint(64), Cl.uint(1_000_000)],
       deployer
     );
-    expect(oracleResult).toBeOk(Cl.uint(200)); // rate-bps = 200
+    expect(oracleResult).toBeOk(Cl.uint(200)); // rate-bps = 200 (unchanged from pre-PoX-5 formula's output)
 
     // ── Step 4: settle cycle 0 (anyone can call) ─────────────────────────
     // fixed-pmt  = 1,000,000 × 100 / 1,000,000 = 100 sats
@@ -142,7 +145,7 @@ describe("Rho Protocol", () => {
       [Cl.uint(1_000_000), Cl.uint(100), Cl.uint(2), Cl.uint(1_000_000)], wallet1);
     simnet.callPublicFn("rho-core", "accept-offer", [Cl.uint(1), Cl.uint(1_000_000)], wallet2);
     simnet.callPublicFn("pox-rate-oracle", "submit-cycle-rate",
-      [Cl.uint(0), Cl.uint(100), Cl.uint(1_000_000)], deployer);
+      [Cl.uint(0), Cl.uint(100), Cl.uint(0), Cl.uint(1_000_000)], deployer);
 
     simnet.callPublicFn("rho-core", "settle-cycle", [Cl.uint(1), Cl.uint(0)], deployer);
 
