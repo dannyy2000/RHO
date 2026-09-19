@@ -3,7 +3,7 @@
 > The hedge for Stacks' junior tranche — fixed-rate protection for STX-only stackers against the yield volatility PoX-5's Bitcoin Staking bonds created.
 
 [![Clarinet](https://img.shields.io/badge/Clarinet-3.11.0-orange)](https://github.com/hirosystems/clarinet)
-[![Tests](https://img.shields.io/badge/tests-10%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-16%20passing-brightgreen)](#testing)
 [![Clarity](https://img.shields.io/badge/Clarity-v2-blue)](https://docs.stacks.co/clarity)
 [![Network](https://img.shields.io/badge/network-Stacks%20Testnet-purple)](https://explorer.hiro.so)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -530,7 +530,7 @@ npm test
 Expected output:
 ```
 Test Files  4 passed (4)
-     Tests  10 passed (10)
+     Tests  16 passed (16)
 ```
 
 ### Start the frontend
@@ -575,6 +575,13 @@ The test suite covers the full swap lifecycle and all error paths. Tests run aga
 | Notional cap enforced | `rho-core.test.ts` | Offer above the per-swap notional cap returns `ERR-EXCEEDS-NOTIONAL-CAP` |
 | Duration cap enforced | `rho-core.test.ts` | Offer above 13 cycles returns `ERR-EXCEEDS-DURATION-CAP` |
 | Pilot capacity released | `rho-core.test.ts` | Notional and slot return to the pool after a swap closes |
+| Waterfall rate derivation | `pox-rate-oracle.test.ts` | Tranche 2 rate = (miner revenue − Tranche 1 obligation) × 85%, per PoX-5 |
+| Tranche 1 subtracted first | `pox-rate-oracle.test.ts` | Same revenue with zero bonds yields a higher Tranche 2 rate — the gap Genesis Bond growth takes |
+| Obligation bound | `pox-rate-oracle.test.ts` | Obligation exceeding miner revenue returns `ERR-OBLIGATION-EXCEEDS-REVENUE` rather than underflowing |
+| Duplicate cycle rejected | `pox-rate-oracle.test.ts` | A cycle's rate cannot be resubmitted or overwritten |
+| Admin-only submission | `pox-rate-oracle.test.ts` | Non-owner callers are rejected |
+| Zero stacked rejected | `pox-rate-oracle.test.ts` | Guards the rate division against a zero denominator |
+| Inputs stored for audit | `pox-rate-oracle.test.ts` | Raw inputs persist alongside the derived pool so the rate can be recomputed independently |
 | Trait conformance | `sip-010-trait.test.ts` | Trait definition loads correctly |
 
 **Verified lifecycle values (from main test):**
