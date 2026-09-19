@@ -124,6 +124,7 @@ export default function CreatePage() {
               <input
                 type="number"
                 min={1}
+                max={1000000000000}
                 value={notional}
                 onChange={(e) => setNotional(e.target.value)}
                 placeholder="10000000"
@@ -131,6 +132,7 @@ export default function CreatePage() {
               />
               <p className="text-xs text-slate-400 mt-2">
                 The reference value used to calculate payments. 1,000,000 uSTX = 1 STX. This never actually moves.
+                Pilot cap: 1,000,000,000,000 uSTX (1M STX) per swap.
               </p>
             </div>
 
@@ -158,7 +160,7 @@ export default function CreatePage() {
               <input
                 type="number"
                 min={1}
-                max={52}
+                max={13}
                 value={duration}
                 onChange={(e) => setDuration(e.target.value)}
                 placeholder="3"
@@ -166,6 +168,7 @@ export default function CreatePage() {
               />
               <p className="text-xs text-slate-400 mt-2">
                 {d > 0 ? `${d} cycle${d > 1 ? "s" : ""} = ~${d * 2} weeks.` : "How many cycles this swap runs before closing."}
+                {" "}Pilot cap: 13 cycles (~6 months).
               </p>
             </div>
 
