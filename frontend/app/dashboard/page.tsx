@@ -6,8 +6,8 @@ const MOCK_POSITIONS = [
   {
     swapId: 1,
     role: "Fixed",
-    notionalUstx: 10_000_000,
-    fixedRateBps: 80,
+    notionalUstx: 1_000_000_000_000,
+    fixedRate: 500_000,
     durationCycles: 3,
     cyclesSettled: 1,
     startCycle: 82,
@@ -21,8 +21,8 @@ const MOCK_POSITIONS = [
 const MOCK_OFFERS = [
   {
     offerId: 2,
-    notionalUstx: 5_000_000,
-    fixedRateBps: 110,
+    notionalUstx: 250_000_000_000,
+    fixedRate: 700_000,
     durationCycles: 1,
     collateralSats: 2_000_000,
     status: "Open",
@@ -146,7 +146,7 @@ export default function DashboardPage() {
                     />
                   </td>
                   <td className="px-4 py-3.5 text-right font-mono text-slate-800">{fmt(pos.notionalUstx)} uSTX</td>
-                  <td className="px-4 py-3.5 text-right font-mono text-slate-800">{pos.fixedRateBps} bps</td>
+                  <td className="px-4 py-3.5 text-right font-mono text-slate-800">{pos.fixedRate.toLocaleString()}</td>
                   <td className="px-4 py-3.5 text-right">
                     <span className="text-slate-700 font-mono">
                       {pos.cyclesSettled}/{pos.durationCycles}
@@ -211,7 +211,7 @@ export default function DashboardPage() {
                   <td className="px-4 py-3.5 text-right font-mono text-slate-800">{fmt(offer.notionalUstx)} uSTX</td>
                   <td className="px-4 py-3.5 text-right">
                     <span className="bg-amber-50 text-amber-700 font-mono font-semibold text-xs px-2 py-0.5 rounded border border-amber-200">
-                      {offer.fixedRateBps} bps
+                      {offer.fixedRate.toLocaleString()}
                     </span>
                   </td>
                   <td className="px-4 py-3.5 text-right text-slate-600">

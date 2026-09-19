@@ -9,30 +9,16 @@ plan:
     - id: 0
       transactions:
         - contract-publish:
-            contract-name: sip-010-trait
+            contract-name: pox-rate-oracle-v2
             expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
-            cost: 4370
-            path: contracts/sip-010-trait.clar
-            anchor-block-only: true
-            clarity-version: 2
-        - contract-publish:
-            contract-name: mock-sbtc
-            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
-            cost: 8750
-            path: contracts/mock-sbtc.clar
-            anchor-block-only: true
-            clarity-version: 2
-        - contract-publish:
-            contract-name: pox-rate-oracle
-            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
-            cost: 40880
+            cost: 204546
             path: contracts/pox-rate-oracle.clar
             anchor-block-only: true
             clarity-version: 2
         - contract-publish:
-            contract-name: rho-core
+            contract-name: rho-core-v2
             expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
-            cost: 142220
+            cost: 208532
             path: contracts/rho-core.clar
             anchor-block-only: true
             clarity-version: 2

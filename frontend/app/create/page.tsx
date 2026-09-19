@@ -9,11 +9,11 @@ import FAQAccordion from "@/components/FAQAccordion";
 const faqs = [
   {
     q: "What is notional?",
-    a: "Notional is the reference amount used to calculate payments — similar to the face value of a bond. It never actually moves between wallets. Payments are calculated each cycle as: notional × rate ÷ 1,000,000. A notional of 10,000,000 uSTX at 80 bps = 800 sats per cycle.",
+    a: "Notional is the reference amount used to calculate payments — similar to the face value of a bond. It never actually moves between wallets. Payments are calculated each cycle as: notional × rate ÷ 1e12. A notional of 1,000,000 STX at a rate of 500,000 = 500,000 sats per cycle.",
   },
   {
     q: "How do I choose the right fixed rate?",
-    a: "Look at recent PoX cycles on the Stacks Explorer to see where rates have been sitting. Set your rate slightly below recent averages for an easy fill, or at the current rate for full protection. Rates typically range from 50–200 bps. If you set it too high, the offer may sit unfilled.",
+    a: "Look at recent PoX cycles on the Stacks Explorer to see where rates have been sitting. Set your rate slightly below recent averages for an easy fill, or at the current rate for full protection. Recent cycles have settled near 465,000–680,000. If you set it too high, the offer may sit unfilled.",
   },
   {
     q: "Why is there a recommended collateral amount?",
@@ -44,7 +44,7 @@ export default function CreatePage() {
   const d = parseInt(duration) || 0;
   const c = parseInt(collateral) || 0;
 
-  const fixedPaymentPerCycle = n && r ? Math.floor((n * r) / 1_000_000) : null;
+  const fixedPaymentPerCycle = n && r ? Math.floor((n * r) / 1_000_000_000_000) : null;
   const totalFixedObligation = fixedPaymentPerCycle && d ? fixedPaymentPerCycle * d : null;
   const recommendedCollateral = totalFixedObligation ? Math.ceil(totalFixedObligation * 1.5) : null;
 
@@ -138,18 +138,19 @@ export default function CreatePage() {
 
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-2">
-                Fixed rate <span className="text-slate-400 normal-case font-normal tracking-normal">(bps — sats per 1M uSTX per cycle)</span>
+                Fixed rate <span className="text-slate-400 normal-case font-normal tracking-normal">(sats per 1,000,000 STX per cycle)</span>
               </label>
               <input
                 type="number"
                 min={1}
+                max={1000000000}
                 value={rate}
                 onChange={(e) => setRate(e.target.value)}
-                placeholder="100"
+                placeholder="500000"
                 className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
               />
               <p className="text-xs text-slate-400 mt-2">
-                The BTC yield you want to lock in. Current PoX rates are typically 50–200 bps. Check the Stacks Explorer for recent cycles.
+                The BTC yield you want to lock in. Recent PoX-5 cycles have settled near 465,000–680,000 on this basis. Check the Stacks Explorer for the latest.
               </p>
             </div>
 

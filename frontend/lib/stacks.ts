@@ -8,8 +8,13 @@ function contractId(envVar: string | undefined, fallback: ContractId): ContractI
   return val as ContractId;
 }
 
+// Live testnet deployment. The oracle and core ship as -v2: the original pair
+// carried a rate-precision defect that truncated every real PoX cycle to a rate
+// of zero, and Stacks contract names cannot be reused. See README, "Why there is a v2".
+const DEPLOYER = "ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7";
+
 export const CONTRACTS = {
-  oracle: contractId(process.env.NEXT_PUBLIC_ORACLE_CONTRACT, "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox-rate-oracle"),
-  core: contractId(process.env.NEXT_PUBLIC_CORE_CONTRACT, "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.rho-core"),
-  sbtc: contractId(process.env.NEXT_PUBLIC_SBTC_CONTRACT, "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.mock-sbtc"),
+  oracle: contractId(process.env.NEXT_PUBLIC_ORACLE_CONTRACT, `${DEPLOYER}.pox-rate-oracle-v2`),
+  core: contractId(process.env.NEXT_PUBLIC_CORE_CONTRACT, `${DEPLOYER}.rho-core-v2`),
+  sbtc: contractId(process.env.NEXT_PUBLIC_SBTC_CONTRACT, `${DEPLOYER}.mock-sbtc`),
 };

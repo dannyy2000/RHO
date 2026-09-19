@@ -16,12 +16,12 @@ path = 'contracts/mock-sbtc.clar'
 clarity_version = 2
 epoch = '2.1'
 
-[contracts.pox-rate-oracle]
+[contracts.pox-rate-oracle-v2]
 path = 'contracts/pox-rate-oracle.clar'
 clarity_version = 2
 epoch = '2.1'
 
-[contracts.rho-core]
+[contracts.rho-core-v2]
 path = 'contracts/rho-core.clar'
 clarity_version = 2
 epoch = '2.1'

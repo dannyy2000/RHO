@@ -5,8 +5,8 @@
 ;; Variable party: locks sBTC collateral, receives actual PoX rate, pays the fixed rate.
 ;; Settlement is automatic - anyone can call settle-cycle after the oracle posts the rate.
 ;;
-;; Payment formula: payment_sats = notional_ustx * rate_bps / 1,000,000
-;; where rate_bps = sats earned per 1,000,000 uSTX stacked per cycle.
+;; Payment formula: payment_sats = notional_ustx * rate / RATE-SCALAR
+;; where rate = sats earned per 1,000,000 STX (1e12 uSTX) stacked per cycle.
 
 ;; -- Errors ---------------------------------------------------------------
 
@@ -31,6 +31,11 @@
 (define-constant MARGIN-NUMERATOR u110)
 (define-constant MARGIN-DENOMINATOR u100)
 
+;; Rate unit: sats per 1,000,000 STX (1e12 uSTX) stacked, per cycle.
+;; Must match RATE-SCALAR in pox-rate-oracle.clar - a mismatch would silently
+;; scale every settlement. A per-1-STX scalar truncates real PoX yield to zero.
+(define-constant RATE-SCALAR u1000000000000)
+
 ;; -- Pilot caps -----------------------------------------------------------
 ;; Rho's pilot runs inside hard, contract-enforced bounds. These are
 ;; constants, not admin-settable parameters: the deployed contract cannot be
@@ -46,7 +51,7 @@
 (define-constant MAX-NOTIONAL-USTX u1000000000000)        ;; 1M STX per swap
 (define-constant MAX-TOTAL-NOTIONAL-USTX u5000000000000)  ;; 5M STX across all active swaps
 (define-constant MAX-DURATION-CYCLES u13)                 ;; ~6 months
-(define-constant MAX-FIXED-RATE-BPS u10000)               ;; sanity bound on quoted rate
+(define-constant MAX-FIXED-RATE u1000000000)              ;; sanity bound: 1e9 sats per 1M STX per cycle
 (define-constant MAX-ACTIVE-SWAPS u25)
 
 (define-data-var active-notional-ustx uint u0)
@@ -60,7 +65,7 @@
   {
     fixed-party: principal,
     notional-ustx: uint,
-    fixed-rate-bps: uint,
+    fixed-rate-sats-per-mstx: uint,
     duration-cycles: uint,
     collateral-sats: uint,
     status: uint
@@ -74,7 +79,7 @@
     fixed-party: principal,
     variable-party: principal,
     notional-ustx: uint,
-    fixed-rate-bps: uint,
+    fixed-rate-sats-per-mstx: uint,
     duration-cycles: uint,
     start-cycle: uint,
     cycles-settled: uint,
@@ -117,7 +122,7 @@
     max-notional-ustx: MAX-NOTIONAL-USTX,
     max-total-notional-ustx: MAX-TOTAL-NOTIONAL-USTX,
     max-duration-cycles: MAX-DURATION-CYCLES,
-    max-fixed-rate-bps: MAX-FIXED-RATE-BPS,
+    max-fixed-rate-sats-per-mstx: MAX-FIXED-RATE,
     max-active-swaps: MAX-ACTIVE-SWAPS
   })
 
@@ -134,7 +139,7 @@
 ;; Fixed party posts a rate offer and locks sBTC collateral in escrow.
 (define-public (post-offer
     (notional-ustx uint)
-    (fixed-rate-bps uint)
+    (fixed-rate-sats-per-mstx uint)
     (duration-cycles uint)
     (collateral-sats uint))
   (let (
@@ -147,20 +152,20 @@
     (asserts! (> duration-cycles u0) ERR-INVALID-PARAMS)
     (asserts! (<= notional-ustx MAX-NOTIONAL-USTX) ERR-EXCEEDS-NOTIONAL-CAP)
     (asserts! (<= duration-cycles MAX-DURATION-CYCLES) ERR-EXCEEDS-DURATION-CAP)
-    (asserts! (<= fixed-rate-bps MAX-FIXED-RATE-BPS) ERR-EXCEEDS-RATE-CAP)
+    (asserts! (<= fixed-rate-sats-per-mstx MAX-FIXED-RATE) ERR-EXCEEDS-RATE-CAP)
     (try! (contract-call? .mock-sbtc transfer collateral-sats caller self none))
     (map-set offers { offer-id: new-id }
       {
         fixed-party: caller,
         notional-ustx: notional-ustx,
-        fixed-rate-bps: fixed-rate-bps,
+        fixed-rate-sats-per-mstx: fixed-rate-sats-per-mstx,
         duration-cycles: duration-cycles,
         collateral-sats: collateral-sats,
         status: u0
       })
     (var-set offer-nonce new-id)
     (print { event: "offer-posted", offer-id: new-id, fixed-party: caller,
-             notional: notional-ustx, fixed-rate: fixed-rate-bps, duration: duration-cycles })
+             notional: notional-ustx, fixed-rate: fixed-rate-sats-per-mstx, duration: duration-cycles })
     (ok new-id)))
 
 ;; Variable party accepts an open offer and locks their sBTC collateral.
@@ -191,7 +196,7 @@
         fixed-party: (get fixed-party offer),
         variable-party: caller,
         notional-ustx: (get notional-ustx offer),
-        fixed-rate-bps: (get fixed-rate-bps offer),
+        fixed-rate-sats-per-mstx: (get fixed-rate-sats-per-mstx offer),
         duration-cycles: (get duration-cycles offer),
         start-cycle: start-cycle,
         cycles-settled: u0,
@@ -212,12 +217,12 @@
 (define-public (settle-cycle (swap-id uint) (cycle uint))
   (let (
     (swap (unwrap! (map-get? swaps { swap-id: swap-id }) ERR-SWAP-NOT-FOUND))
-    (rate-data (unwrap! (contract-call? .pox-rate-oracle get-cycle-rate cycle) ERR-ORACLE-RATE-NOT-FOUND))
+    (rate-data (unwrap! (contract-call? .pox-rate-oracle-v2 get-cycle-rate cycle) ERR-ORACLE-RATE-NOT-FOUND))
     (notional (get notional-ustx swap))
-    (fixed-rate (get fixed-rate-bps swap))
-    (actual-rate (get rate-bps rate-data))
-    (fixed-pmt (/ (* notional fixed-rate) u1000000))
-    (actual-pmt (/ (* notional actual-rate) u1000000))
+    (fixed-rate (get fixed-rate-sats-per-mstx swap))
+    (actual-rate (get rate-sats-per-mstx rate-data))
+    (fixed-pmt (/ (* notional fixed-rate) RATE-SCALAR))
+    (actual-pmt (/ (* notional actual-rate) RATE-SCALAR))
     (new-cycles-settled (+ (get cycles-settled swap) u1))
   )
     (asserts! (is-eq (get status swap) u0) ERR-SWAP-NOT-ACTIVE)
@@ -253,7 +258,7 @@
         (new-var-col (if can-pay (- cur-var net) u0))
         (new-fixed-col (+ (get fixed-collateral swap) actual-net))
         (remaining (- (get duration-cycles swap) new-cycles-settled))
-        (remaining-obligation (/ (* (* remaining notional) fixed-rate) u1000000))
+        (remaining-obligation (/ (* (* remaining notional) fixed-rate) RATE-SCALAR))
         (min-margin (/ (* remaining-obligation MARGIN-NUMERATOR) MARGIN-DENOMINATOR))
       )
         (if (or (not can-pay) (< new-var-col min-margin))

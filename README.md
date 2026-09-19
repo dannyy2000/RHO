@@ -3,7 +3,7 @@
 > The hedge for Stacks' junior tranche — fixed-rate protection for STX-only stackers against the yield volatility PoX-5's Bitcoin Staking bonds created.
 
 [![Clarinet](https://img.shields.io/badge/Clarinet-3.11.0-orange)](https://github.com/hirosystems/clarinet)
-[![Tests](https://img.shields.io/badge/tests-16%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-19%20passing-brightgreen)](#testing)
 [![Clarity](https://img.shields.io/badge/Clarity-v2-blue)](https://docs.stacks.co/clarity)
 [![Network](https://img.shields.io/badge/network-Stacks%20Testnet-purple)](https://explorer.hiro.so)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -18,20 +18,32 @@ Since PoX-5 activated on July 30, 2026, miner BTC no longer splits proportionall
 
 ## Deployed Contracts — Stacks Testnet
 
-All four contracts are live and independently verifiable. Deployed **2026-09-19** from `ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7`.
+All contracts are live and independently verifiable, deployed from `ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7`.
+
+**Current contracts — use these:**
 
 | Contract | Explorer | Deployment tx |
 |----------|----------|---------------|
-| `rho-core` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core?chain=testnet) | [`15e69dec…`](https://explorer.hiro.so/txid/0x15e69decd8cb1f9a335df614d9f608e263b39d1904a3819048a7f53f93f0fca7?chain=testnet) |
-| `pox-rate-oracle` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.pox-rate-oracle?chain=testnet) | [`7558a1cd…`](https://explorer.hiro.so/txid/0x7558a1cd264b405b0749c67451d8a82b286f554073cb9ccd069559079d35a8e3?chain=testnet) |
+| `rho-core-v2` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v2?chain=testnet) | [`a518bfe8…`](https://explorer.hiro.so/txid/0xa518bfe8005427d37a9d982c6b0310c96db9cf85ef9afe91d45be7184cfc8d7c?chain=testnet) |
+| `pox-rate-oracle-v2` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.pox-rate-oracle-v2?chain=testnet) | [`ac0e8ff2…`](https://explorer.hiro.so/txid/0xac0e8ff21ce2dfec2339ee27aeb9eb8a561b21dfc12926d07ac5b68d93e300a5?chain=testnet) |
 | `mock-sbtc` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.mock-sbtc?chain=testnet) | [`ecf23cd2…`](https://explorer.hiro.so/txid/0xecf23cd2f3cd15904b5c8cd11bacea1f9b6eef3e814c0a25b71fb38a3161d82b?chain=testnet) |
 | `sip-010-trait` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.sip-010-trait?chain=testnet) | [`2f936d9b…`](https://explorer.hiro.so/txid/0x2f936d9b2d62a810cc8dbb29833fc81776d03fcda22ef806fbc451416d355001?chain=testnet) |
+
+### Why there is a v2
+
+The first deployment of `rho-core` and `pox-rate-oracle` (2026-09-19, earlier the same day) carried a **rate-precision defect**, found by running live PoX-5 figures through the contract rather than the toy values used in unit tests.
+
+The rate unit was *sats per 1,000,000 uSTX* — per 1 STX. Real PoX yield is roughly **0.5 sats per STX per cycle**, so under Clarity's integer division every real cycle truncated to a rate of **0**. Every settlement would have moved zero sats, liquidation would never have triggered, and the protocol would have been inert against real data — while passing every test, because the tests used a stacked supply of 1,000,000 uSTX instead of the real 441 billion.
+
+`-v2` raises the scalar to *sats per 1,000,000 STX* (`1e12`). Cycle 142 now yields a rate of **679,497** rather than 0. The regression is pinned by tests in `tests/real-data-check.test.ts`, which assert against live cycle figures so the unit cannot silently regress again.
+
+Clarity contracts are immutable and Stacks contract names cannot be reused, so the fix ships as a new name. The superseded v1 contracts remain on chain and are deliberately not linked here; `mock-sbtc` and `sip-010-trait` were unaffected and are unchanged.
 
 **Verify the deployed behaviour without trusting this README.** The pilot caps are readable directly off chain:
 
 ```bash
 curl -s -X POST \
-  "https://api.testnet.hiro.so/v2/contracts/call-read/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7/rho-core/get-pilot-caps" \
+  "https://api.testnet.hiro.so/v2/contracts/call-read/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7/rho-core-v2/get-pilot-caps" \
   -H "Content-Type: application/json" \
   -d '{"sender":"ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7","arguments":[]}'
 ```
@@ -39,7 +51,7 @@ curl -s -X POST \
 The oracle's live signature confirms the PoX-5 waterfall inputs are in force, not the pre-PoX-5 pro-rata formula:
 
 ```bash
-curl -s "https://api.testnet.hiro.so/v2/contracts/interface/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7/pox-rate-oracle" \
+curl -s "https://api.testnet.hiro.so/v2/contracts/interface/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7/pox-rate-oracle-v2" \
   | grep -o '"name":"submit-cycle-rate".*total-ustx-stacked'
 # → args: cycle, miner-revenue-sats, tranche-1-obligation-sats, total-ustx-stacked
 ```
@@ -174,10 +186,19 @@ The Tranche 2 residual rate is a function of three on-chain quantities:
 
 ```
 tranche_2_pool_sats = (miner_revenue_sats − tranche_1_obligation_sats) × 0.85
-rate_bps            = (tranche_2_pool_sats × 1,000,000) ÷ total_ustx_stacked_tranche_2
+rate                = (tranche_2_pool_sats × 1e12) ÷ total_ustx_stacked_tranche_2
 ```
 
 where `tranche_1_obligation_sats` is the guaranteed payout owed to active protocol bonds that cycle (bonded BTC × each bond's target rate).
+
+**The rate unit is sats per 1,000,000 STX stacked, per cycle.** The `1e12` scalar is load-bearing, not cosmetic: real PoX yield is roughly 0.5 sats per STX per cycle, so a per-1-STX scalar truncates every real cycle to zero under Clarity's integer division. See [Why there is a v2](#why-there-is-a-v2).
+
+Worked against live cycle-142 figures — miners paid 3.83 BTC, about 0.3 BTC owed to Tranche 1, 441,576,024 STX stacked:
+
+```
+pool = (383,000,000 - 30,000,000) × 0.85       = 300,050,000 sats
+rate = 300,050,000 × 1e12 ÷ 441,576,024,000,000 = 679,497
+```
 
 **Open technical question — flagged, not yet resolved.** SIP-045 confirms the PoX-5 contract exposes the reserve fund balance on-chain, but the published spec does not document public read-only functions for bond capacity, target rate, or per-cycle Tranche 1 obligations. Resolving this against the deployed PoX-5 reference contract is active, in-progress work — see [Roadmap, Phase 1](#phase-1--bilateral-grant-scope-now). This is a deliberate, disclosed gap rather than an assumption baked silently into the contract: Phase 1 sources it the same way PoX-4 data was sourced originally (admin-submitted, cross-checked against what's publicly verifiable), and Phase 2 moves to fully trustless sourcing once the necessary read functions are confirmed.
 
@@ -186,7 +207,7 @@ The previous version of this oracle computed a naive pro-rata share across *all*
 **Settlement formula — payment per cycle (unchanged by the above):**
 
 ```
-payment_sats = notional_ustx × rate_bps ÷ 1,000,000
+payment_sats = notional_ustx × rate ÷ 1e12
 ```
 
 Run once for the fixed rate, once for the actual Tranche 2 rate. The net difference is the transfer between parties.
@@ -376,7 +397,7 @@ A SIP-010 compliant fungible token for testnet use. Freely mintable — anyone c
 
 ---
 
-### `pox-rate-oracle.clar`
+### `pox-rate-oracle.clar` — deployed as `pox-rate-oracle-v2`
 
 Stores verified PoX-5 Tranche 2 (STX-only staker) yield rates for each cycle. The admin (contract deployer) submits the raw waterfall inputs after each cycle; the contract derives the Tranche 2 pool and rate on-chain, so the submission is auditable against the formula rather than trusted directly. See [How the Rate is Calculated](#how-the-rate-is-calculated).
 
@@ -388,7 +409,7 @@ Stores verified PoX-5 Tranche 2 (STX-only staker) yield rates for each cycle. Th
   tranche-1-obligation-sats: uint,   ;; guaranteed payout owed to Genesis Bond holders
   tranche-2-pool-sats:       uint,   ;; derived: (miner-revenue - tranche-1-obligation) × 85%
   total-ustx-stacked:        uint,   ;; total uSTX held by Tranche 2 (STX-only) stackers
-  rate-bps:                  uint,   ;; derived rate in bps
+  rate-sats-per-mstx:        uint,   ;; derived: sats per 1,000,000 STX per cycle
   submitted-at:               uint   ;; burn block height at submission
 }
 ```
@@ -419,7 +440,7 @@ Stores verified PoX-5 Tranche 2 (STX-only staker) yield rates for each cycle. Th
 
 ---
 
-### `rho-core.clar`
+### `rho-core.clar` — deployed as `rho-core-v2`
 
 The core swap protocol. Manages the complete lifecycle of offers and swaps. Holds all collateral in escrow. Enforces maintenance margin rules. Settles each cycle based on oracle data.
 
@@ -562,8 +583,8 @@ npm test
 
 Expected output:
 ```
-Test Files  4 passed (4)
-     Tests  16 passed (16)
+Test Files  5 passed (5)
+     Tests  19 passed (19)
 ```
 
 ### Start the frontend

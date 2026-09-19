@@ -28,7 +28,15 @@
 (define-constant TRANCHE-2-SHARE-NUMERATOR u85)
 (define-constant TRANCHE-2-SHARE-DENOMINATOR u100)
 
-;; rate-bps: sats earned per 1,000,000 uSTX stacked per cycle, for Tranche 2 only.
+;; Rate unit: sats earned per 1,000,000 STX (1e12 uSTX) stacked, per cycle.
+;;
+;; The scalar must be large enough that real PoX yield does not truncate to zero
+;; under Clarity's integer division. Actual yield is roughly 0.5 sats per STX per
+;; cycle, so a per-1-STX scalar (1e6) floors every real cycle to 0 and renders
+;; every settlement a no-op. Against live cycle-142 figures this scalar yields
+;; ~679,499, which carries six significant figures.
+(define-constant RATE-SCALAR u1000000000000)
+
 (define-map cycle-rates
   { cycle: uint }
   {
@@ -36,7 +44,7 @@
     tranche-1-obligation-sats: uint, ;; guaranteed payout owed to protocol bonds this cycle
     tranche-2-pool-sats: uint,       ;; derived: (miner-revenue - tranche-1-obligation) * 85%
     total-ustx-stacked: uint,        ;; total uSTX held by Tranche 2 (STX-only) stackers
-    rate-bps: uint,
+    rate-sats-per-mstx: uint,        ;; derived: sats per 1,000,000 STX per cycle
     submitted-at: uint
   })
 
@@ -70,7 +78,7 @@
     (let (
       (post-tranche-1-sats (- miner-revenue-sats tranche-1-obligation-sats))
       (tranche-2-pool-sats (/ (* post-tranche-1-sats TRANCHE-2-SHARE-NUMERATOR) TRANCHE-2-SHARE-DENOMINATOR))
-      (rate-bps (/ (* tranche-2-pool-sats u1000000) total-ustx-stacked))
+      (rate-sats-per-mstx (/ (* tranche-2-pool-sats RATE-SCALAR) total-ustx-stacked))
     )
       (map-set cycle-rates { cycle: cycle }
         {
@@ -78,14 +86,14 @@
           tranche-1-obligation-sats: tranche-1-obligation-sats,
           tranche-2-pool-sats: tranche-2-pool-sats,
           total-ustx-stacked: total-ustx-stacked,
-          rate-bps: rate-bps,
+          rate-sats-per-mstx: rate-sats-per-mstx,
           submitted-at: burn-block-height
         })
       (if (>= cycle (var-get latest-cycle))
         (var-set latest-cycle cycle)
         true)
-      (print { event: "rate-submitted", cycle: cycle, rate-bps: rate-bps,
+      (print { event: "rate-submitted", cycle: cycle, rate-sats-per-mstx: rate-sats-per-mstx,
                tranche-2-pool-sats: tranche-2-pool-sats,
                miner-revenue-sats: miner-revenue-sats,
                tranche-1-obligation-sats: tranche-1-obligation-sats })
-      (ok rate-bps))))
+      (ok rate-sats-per-mstx))))

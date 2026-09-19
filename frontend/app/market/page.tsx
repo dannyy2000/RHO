@@ -6,9 +6,9 @@ import { NETWORK, CONTRACTS } from "@/lib/stacks";
 import FAQAccordion from "@/components/FAQAccordion";
 
 const MOCK_OFFERS = [
-  { id: 1, fixedParty: "ST1SJ3...YPD5", notionalUstx: 10_000_000, fixedRateBps: 80, durationCycles: 3, collateralSats: 5_000_000, postedAt: "Cycle 84" },
-  { id: 2, fixedParty: "ST2CY5...K9AG", notionalUstx: 25_000_000, fixedRateBps: 95, durationCycles: 6, collateralSats: 12_000_000, postedAt: "Cycle 84" },
-  { id: 3, fixedParty: "ST3NBR...H2T", notionalUstx: 5_000_000, fixedRateBps: 110, durationCycles: 1, collateralSats: 2_000_000, postedAt: "Cycle 85" },
+  { id: 1, fixedParty: "ST1SJ3...YPD5", notionalUstx: 1_000_000_000_000, fixedRate: 500_000, durationCycles: 3, collateralSats: 5_000_000, postedAt: "Cycle 84" },
+  { id: 2, fixedParty: "ST2CY5...K9AG", notionalUstx: 500_000_000_000, fixedRate: 620_000, durationCycles: 6, collateralSats: 12_000_000, postedAt: "Cycle 84" },
+  { id: 3, fixedParty: "ST3NBR...H2T", notionalUstx: 250_000_000_000, fixedRate: 700_000, durationCycles: 1, collateralSats: 2_000_000, postedAt: "Cycle 85" },
 ];
 
 function fmt(n: number) { return n.toLocaleString(); }
@@ -19,7 +19,7 @@ function AcceptModal({ offer, onClose }: { offer: (typeof MOCK_OFFERS)[0]; onClo
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
-  const satRequired = Math.ceil((offer.notionalUstx * offer.fixedRateBps * offer.durationCycles) / 1_000_000 * 1.1);
+  const satRequired = Math.ceil((offer.notionalUstx * offer.fixedRate * offer.durationCycles) / 1_000_000_000_000 * 1.1);
   const collateralNum = parseInt(collateral, 10);
   const valid = !!collateralNum && collateralNum >= satRequired;
 
@@ -79,7 +79,7 @@ function AcceptModal({ offer, onClose }: { offer: (typeof MOCK_OFFERS)[0]; onClo
               </div>
               <div className="flex justify-between px-4 py-3">
                 <span className="text-slate-500">Fixed rate (you owe)</span>
-                <span className="font-mono font-semibold text-amber-700">{offer.fixedRateBps} bps / cycle</span>
+                <span className="font-mono font-semibold text-amber-700">{offer.fixedRate.toLocaleString()} / cycle</span>
               </div>
               <div className="flex justify-between px-4 py-3">
                 <span className="text-slate-500">Duration</span>
@@ -173,10 +173,10 @@ export default function MarketPage() {
             <span className="text-amber-700 text-xs font-bold">i</span>
           </div>
           <div>
-            <p className="text-sm font-semibold text-amber-900 mb-1">What is a basis point (bps)?</p>
+            <p className="text-sm font-semibold text-amber-900 mb-1">How is the rate quoted?</p>
             <p className="text-sm text-amber-800 leading-relaxed">
-              Rates on Rho use basis points where <strong>1 bps = 1 sat earned per 1,000,000 uSTX stacked per cycle</strong>.
-              Example: 80 bps on 10M uSTX = a fixed payment of 800 sats per cycle. No price feed needed.
+              Rates are quoted as <strong>sats earned per 1,000,000 STX stacked, per cycle</strong>.
+              Cycle 142 paid roughly 679,497 on that basis. A 500,000 rate on a 1,000,000 STX notional is a fixed payment of 500,000 sats per cycle. No price feed needed.
             </p>
           </div>
         </div>
@@ -203,7 +203,7 @@ export default function MarketPage() {
                   <td className="px-5 py-4 text-right font-mono text-slate-800">{fmt(offer.notionalUstx)} <span className="text-slate-400 text-xs">uSTX</span></td>
                   <td className="px-5 py-4 text-right">
                     <span className="bg-amber-50 text-amber-700 font-mono font-bold text-xs px-2.5 py-1 rounded-full border border-amber-200">
-                      {offer.fixedRateBps} bps
+                      {offer.fixedRate.toLocaleString()}
                     </span>
                   </td>
                   <td className="px-5 py-4 text-right text-slate-600 text-sm">

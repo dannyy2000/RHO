@@ -206,7 +206,7 @@ export default function HomePage() {
                 <div className="bg-white rounded-xl border border-slate-200 p-5">
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Rate formula</p>
                   <code className="block text-sm font-mono text-slate-900 mb-2">
-                    rate_bps = btc_reward_sats × 1,000,000<br />
+                    rate = tranche_2_pool_sats × 1e12<br />
                     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;÷ total_ustx_stacked
                   </code>
                   <p className="text-xs text-slate-400">Sats earned per 1,000,000 uSTX stacked per cycle.</p>
@@ -214,7 +214,7 @@ export default function HomePage() {
                 <div className="bg-white rounded-xl border border-slate-200 p-5">
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Settlement formula</p>
                   <code className="block text-sm font-mono text-slate-900 mb-2">
-                    payment_sats = notional_ustx × rate_bps<br />
+                    payment_sats = notional_ustx × rate<br />
                     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;÷ 1,000,000
                   </code>
                   <p className="text-xs text-slate-400">Run at fixed rate and actual rate. Only the net difference moves.</p>
@@ -226,14 +226,14 @@ export default function HomePage() {
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-5">Worked example</h3>
               <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
                 <div className="px-6 py-4 bg-slate-50 border-b border-slate-200">
-                  <p className="text-sm font-semibold text-slate-700">Fixed rate: 80 bps · Notional: 10,000,000 uSTX</p>
+                  <p className="text-sm font-semibold text-slate-700">Fixed rate: 500,000 · Notional: 1,000,000 STX</p>
                 </div>
                 <div className="divide-y divide-slate-100">
                   <div className="px-6 py-5">
                     <div className="flex items-start justify-between gap-4 mb-3">
                       <div>
                         <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Cycle A — miners compete hard</p>
-                        <p className="text-sm text-slate-700">Actual rate: <span className="font-mono font-bold">100 bps</span></p>
+                        <p className="text-sm text-slate-700">Actual rate: <span className="font-mono font-bold">679,497</span></p>
                       </div>
                       <span className="flex-shrink-0 text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full">Variable wins</span>
                     </div>
@@ -252,7 +252,7 @@ export default function HomePage() {
                     <div className="flex items-start justify-between gap-4 mb-3">
                       <div>
                         <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Cycle B — miners pull back</p>
-                        <p className="text-sm text-slate-700">Actual rate: <span className="font-mono font-bold">55 bps</span></p>
+                        <p className="text-sm text-slate-700">Actual rate: <span className="font-mono font-bold">465,831</span></p>
                       </div>
                       <span className="flex-shrink-0 text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-full">Fixed wins</span>
                     </div>
