@@ -60,8 +60,51 @@ curl -s "https://api.testnet.hiro.so/v2/contracts/interface/ST14V779KZH7Q62TXJ1G
 
 ---
 
+## Testnet Simulation — Full Lifecycle on Real Data
+
+A complete three-cycle swap was executed against the live testnet contracts on **2026-09-19**, driven by **real observed PoX-5 figures** rather than invented numbers. Every transaction below is on chain and independently checkable.
+
+**Swap terms:** 1,000,000 STX notional (the per-swap pilot cap), fixed at 500,000 sats per 1M STX per cycle, 3 cycles, 10,000,000 sats collateral posted by each side.
+
+**Cycle inputs** — taken from mainnet cycles 140–142, applied to testnet cycles 8–10. Miner revenue and the Genesis Bond obligation are the real amounts; 441,576,024 STX is the actual stacked supply.
+
+| Testnet cycle | Real source | Miner revenue | Tranche 1 owed | Derived rate | vs fixed 500,000 | Net flow |
+|---|---|---|---|---|---|---|
+| 8 | mainnet 142 | 3.83 BTC | 0.3 BTC | **679,497** | above | 179,497 → variable |
+| 9 | mainnet 141 | 2.98 BTC | 0.3 BTC | **515,879** | above | 15,879 → variable |
+| 10 | mainnet 140 | 2.72 BTC | 0.3 BTC | **465,831** | below | 34,169 → fixed |
+
+Cycle 10 matters: it is the only cycle where the actual rate lands *below* the fixed rate, so the reverse settlement path and the maintenance-margin check are exercised, not just the profitable direction.
+
+**Transactions**
+
+| Step | Transaction |
+|------|-------------|
+| Mint collateral | [`dcbf4590…`](https://explorer.hiro.so/txid/0xdcbf4590ae4ea355f4c53da1b4fada92bca6afdea784003e76fd462a8c516b35?chain=testnet) |
+| Post offer | [`580d5dc4…`](https://explorer.hiro.so/txid/0x580d5dc45c8bf073a2a6b66705796d16a51b71d3f78736cd788d517864e554ad?chain=testnet) |
+| Accept offer | [`b9a25138…`](https://explorer.hiro.so/txid/0xb9a25138212a7d18e73fcacc49ecb518ada7cc8a682bd51be8f27357b4dc4ec1?chain=testnet) |
+| Oracle — cycle 8 | [`97130e16…`](https://explorer.hiro.so/txid/0x97130e1681c2e29dedf4d4266752721eb7bb3fbf314f5d04db63ba8196e10826?chain=testnet) |
+| Settle cycle 8 | [`848d1061…`](https://explorer.hiro.so/txid/0x848d10616c92fb5de663fb9be76b71022c407a301b36f0d1d018ca37ab0a1d08?chain=testnet) |
+| Oracle — cycle 9 | [`e8a59b71…`](https://explorer.hiro.so/txid/0xe8a59b71cc430aff8c55a0e1ff4a8c827131c0c038dddef13e102a68e78ec9ac?chain=testnet) |
+| Oracle — cycle 10 | [`a6e312c1…`](https://explorer.hiro.so/txid/0xa6e312c1b960827ee72dbe1ee9defcb98aacf7ad5be94d4c74bca51aedaf77fe?chain=testnet) |
+| Settle cycle 9 | [`aa618dec…`](https://explorer.hiro.so/txid/0xaa618dec246e071394e8c2abf3778c39500620592c51af1da9ed9f7bfd5e9e79?chain=testnet) |
+| Settle cycle 10 | [`38ed192c…`](https://explorer.hiro.so/txid/0x38ed192c96337ab7f8fd9f4723ddf28348a2cb96ae21461da8a3509bc76942dc?chain=testnet) |
+| Close swap | [`4f3ea368…`](https://explorer.hiro.so/txid/0x4f3ea36861d684f2a4585f27e91badefedebeb4f908a1325a56fd173ca44d305?chain=testnet) |
+
+**Verified outcomes**, read back from chain rather than asserted here:
+
+- Each `get-cycle-settlement` record holds the expected pair — cycle 8 `(500,000, 679,497)`, cycle 9 `(500,000, 515,879)`, cycle 10 `(500,000, 465,831)`.
+- The swap closed with `status: 1` (completed), `cycles-settled: 3`, and both collateral balances at zero.
+- `get-pilot-utilisation` returned to `0` active notional and `0` active swaps, with full headroom restored — the capacity-release path verified on chain, not just in tests.
+- The `rho-core-v2` escrow received exactly **20,000,000** sats and sent exactly **20,000,000**, holding zero afterwards. No value created, lost, or stranded.
+
+**Honest limitations.** Both legs were signed by the same principal, so this exercises contract behaviour rather than counterparty dynamics or price discovery. The testnet cycle numbers (8–10) are not the mainnet cycles the data came from; only the economic inputs are real. Collateral is `mock-sbtc`, not bridged sBTC. Reproduce with `deployments/simulation.testnet-plan.yaml` and `deployments/simulation-part2.testnet-plan.yaml`.
+
+---
+
 ## Table of Contents
 
+- [Testnet Simulation](#testnet-simulation--full-lifecycle-on-real-data)
 - [Deployed Contracts](#deployed-contracts--stacks-testnet)
 - [Background — What is PoX yield?](#background--what-is-pox-yield)
 - [The Problem](#the-problem)
@@ -785,13 +828,26 @@ Rho applied for the **Stacks Endowment Q2 2026 Getting Started Grant** (DeFi & P
 
 Since that rejection, PoX-5 activated (July 30, 2026) and restructured PoX yield into the three-tranche waterfall described above — which changed Rho's own thesis, not just its technical assumptions. The Q2 pitch targeted generic "PoX yield is floating" risk; Stacks' own Genesis Bond product now addresses a version of that for whitelisted anchors. Rho's Q3 application targets the risk Genesis Bond's launch *created* rather than solved: Tranche 2 (STX-only stacker) yield, now residual and structurally more volatile than before PoX-5, with no hedging instrument available to the stackers who bear it.
 
-This is Rho's response to the Q2 feedback, applying to the **Stacks Endowment Q3 2026 grant cycle** (Bitcoin Staking & sBTC Utility track):
+This is Rho's response to the Q2 feedback, applying to the **Stacks Endowment Q3 2026 grant cycle** (Bitcoin Staking & sBTC Utility track).
+
+### Status against each point of the Q2 review
+
+| Q2 review asked for | Status |
+|---|---|
+| Verifiable deployed contracts | **Done.** Live on testnet with explorer links and read-only calls anyone can run — see [Deployed Contracts](#deployed-contracts--stacks-testnet). |
+| Meaningful testnet usage or simulation history | **Done.** Full three-cycle lifecycle executed on chain against real PoX-5 figures, with transaction hashes and verified outcomes — see [Testnet Simulation](#testnet-simulation--full-lifecycle-on-real-data). |
+| Updated PoX assumptions | **Done.** Rewritten around the PoX-5 three-tranche waterfall; the pre-PoX-5 pro-rata formula is gone. |
+| Documented oracle and settlement model | **Done.** Raw inputs stored on chain so the rate is independently recomputable, plus dedicated oracle tests. One dependency remains open and is disclosed rather than assumed — see [How the Rate is Calculated](#how-the-rate-is-calculated). |
+| Capped pilot design with risk controls | **Done.** Enforced as contract constants no key holder can raise — see [Capped Pilot Design](#capped-pilot-design). |
+| Evidence of sustained development | **Partial, and stated plainly.** Development stopped after the June submission and resumed in September. That gap is real and cannot be retroactively filled. What can be shown is the work itself: a rate-precision defect found by testing against live data and fixed, contract-enforced risk caps, and a verified on-chain lifecycle. |
+
+### Proposed milestones
 
 | Milestone | Target | Deliverable |
 |-----------|--------|-------------|
-| M1 | Now | Oracle updated to the PoX-5 Tranche 2 residual formula (replacing the pre-PoX-5 pro-rata calculation). Capped pilot design published — bounded notional, participant caps, documented risk controls. Tranche 1 data-sourcing verified against the deployed PoX-5 reference contract. |
-| M2 | ~6 weeks | Meaningful testnet usage: scripted multi-cycle simulation run against real observed PoX-5 tranche data, published with transaction hashes — not just unit tests. |
-| M3 | ~12 weeks | Mainnet deployment with real sBTC. Verified end-to-end swaps hedging real Tranche 2 exposure, with a public post-mortem of the Q2→Q3 gap and what changed. |
+| M1 | Complete | Oracle rebuilt on the PoX-5 waterfall, capped pilot enforced in-contract, contracts deployed and verified, full lifecycle simulated on chain against real cycle data. |
+| M2 | ~6 weeks | Trustless oracle sourcing: replace admin submission with verified reads of Tranche 1 obligations, resolving the open dependency. Second-principal simulation exercising real counterparty dynamics and a liquidation path. |
+| M3 | ~12 weeks | Mainnet deployment with real sBTC under the same caps. End-to-end swaps hedging live Tranche 2 exposure, with published results including anything that did not work. |
 
 Funding amounts to be proposed through the Q3 application portal; the Q3 2026 announcement does not disclose fixed track amounts in advance.
 

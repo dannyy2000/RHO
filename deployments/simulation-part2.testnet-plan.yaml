@@ -1,0 +1,71 @@
+---
+id: 0
+name: Rho multi-cycle testnet simulation (continued)
+network: testnet
+stacks-node: "https://api.testnet.hiro.so"
+bitcoin-node: "http://blockstack:blockstacksystem@bitcoind.testnet.stacks.co:18332"
+plan:
+  batches:
+    # Settle cycle 8 against the rate already on chain, and post the remaining
+    # two cycles. Same sender, so these execute in nonce order.
+    - id: 0
+      transactions:
+        - contract-call:
+            contract-id: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v2
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            method: settle-cycle
+            parameters:
+              - u1
+              - u8
+            cost: 150000
+        # Real mainnet cycle 141: 2.98 BTC paid. Expected rate 515,879.
+        - contract-call:
+            contract-id: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.pox-rate-oracle-v2
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            method: submit-cycle-rate
+            parameters:
+              - u9
+              - u298000000
+              - u30000000
+              - u441576024000000
+            cost: 100000
+        # Real mainnet cycle 140: 2.72 BTC paid. Expected rate 465,831, which is
+        # below the 500,000 fixed rate, so this cycle pays the fixed party.
+        - contract-call:
+            contract-id: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.pox-rate-oracle-v2
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            method: submit-cycle-rate
+            parameters:
+              - u10
+              - u272000000
+              - u30000000
+              - u441576024000000
+            cost: 100000
+      epoch: "2.1"
+
+    - id: 1
+      transactions:
+        - contract-call:
+            contract-id: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v2
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            method: settle-cycle
+            parameters:
+              - u1
+              - u9
+            cost: 150000
+        - contract-call:
+            contract-id: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v2
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            method: settle-cycle
+            parameters:
+              - u1
+              - u10
+            cost: 150000
+        - contract-call:
+            contract-id: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v2
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            method: close-swap
+            parameters:
+              - u1
+            cost: 150000
+      epoch: "2.1"
