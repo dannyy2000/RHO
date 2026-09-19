@@ -15,6 +15,6 @@ const DEPLOYER = "ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7";
 
 export const CONTRACTS = {
   oracle: contractId(process.env.NEXT_PUBLIC_ORACLE_CONTRACT, `${DEPLOYER}.pox-rate-oracle-v2`),
-  core: contractId(process.env.NEXT_PUBLIC_CORE_CONTRACT, `${DEPLOYER}.rho-core-v2`),
+  core: contractId(process.env.NEXT_PUBLIC_CORE_CONTRACT, `${DEPLOYER}.rho-core-v3`),
   sbtc: contractId(process.env.NEXT_PUBLIC_SBTC_CONTRACT, `${DEPLOYER}.mock-sbtc`),
 };

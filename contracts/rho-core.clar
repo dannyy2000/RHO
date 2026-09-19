@@ -272,8 +272,6 @@
               true)
             (var-set active-notional-ustx (- (var-get active-notional-ustx) notional))
             (var-set active-swap-count (- (var-get active-swap-count) u1))
-            (var-set active-notional-ustx (- (var-get active-notional-ustx) notional))
-            (var-set active-swap-count (- (var-get active-swap-count) u1))
             (map-set swaps { swap-id: swap-id }
               (merge swap {
                 cycles-settled: new-cycles-settled,

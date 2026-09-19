@@ -16,7 +16,7 @@ describe("Rho Protocol", () => {
     // notional = 1,000,000 uSTX, fixed-rate = 100 (sats per 1M uSTX),
     // duration = 1 cycle, collateral = 1,000,000 sats
     const { result: postResult } = simnet.callPublicFn(
-      "rho-core-v2",
+      "rho-core-v3",
       "post-offer",
       [Cl.uint(1_000_000), Cl.uint(100_000_000), Cl.uint(1), Cl.uint(1_000_000)],
       wallet1
@@ -29,7 +29,7 @@ describe("Rho Protocol", () => {
 
     // ── Step 2: wallet2 (variable party) accepts ────────────────────────
     const { result: acceptResult } = simnet.callPublicFn(
-      "rho-core-v2",
+      "rho-core-v3",
       "accept-offer",
       [Cl.uint(1), Cl.uint(2_000_000)],
       wallet2
@@ -37,7 +37,7 @@ describe("Rho Protocol", () => {
     expect(acceptResult).toBeOk(Cl.uint(1)); // swap-id = 1
 
     // Verify offer is marked accepted (full tuple required for exact match)
-    const offer = simnet.callReadOnlyFn("rho-core-v2", "get-offer", [Cl.uint(1)], deployer).result;
+    const offer = simnet.callReadOnlyFn("rho-core-v3", "get-offer", [Cl.uint(1)], deployer).result;
     expect(offer).toBeSome(Cl.tuple({
       "fixed-party": Cl.principal(wallet1),
       "notional-ustx": Cl.uint(1_000_000),
@@ -66,7 +66,7 @@ describe("Rho Protocol", () => {
     // actual-pmt = 1,000,000 × 200 / 1,000,000 = 200 sats
     // variable wins: net = 100 sats moves from fixed_collateral → variable_collateral
     const { result: settleResult } = simnet.callPublicFn(
-      "rho-core-v2",
+      "rho-core-v3",
       "settle-cycle",
       [Cl.uint(1), Cl.uint(0)],
       deployer
@@ -76,7 +76,7 @@ describe("Rho Protocol", () => {
     );
 
     // Verify collateral balances shifted (full tuple required for exact match)
-    const swapAfter = simnet.callReadOnlyFn("rho-core-v2", "get-swap", [Cl.uint(1)], deployer).result;
+    const swapAfter = simnet.callReadOnlyFn("rho-core-v3", "get-swap", [Cl.uint(1)], deployer).result;
     expect(swapAfter).toBeSome(
       Cl.tuple({
         "offer-id": Cl.uint(1),
@@ -95,7 +95,7 @@ describe("Rho Protocol", () => {
 
     // ── Step 5: close swap — releases collateral to both parties ─────────
     const { result: closeResult } = simnet.callPublicFn(
-      "rho-core-v2",
+      "rho-core-v3",
       "close-swap",
       [Cl.uint(1)],
       deployer
@@ -116,7 +116,7 @@ describe("Rho Protocol", () => {
     simnet.callPublicFn("mock-sbtc", "mint", [Cl.uint(5_000_000), Cl.principal(wallet1)], deployer);
 
     simnet.callPublicFn(
-      "rho-core-v2",
+      "rho-core-v3",
       "post-offer",
       [Cl.uint(1_000_000), Cl.uint(50_000_000), Cl.uint(3), Cl.uint(500_000)],
       wallet1
@@ -126,7 +126,7 @@ describe("Rho Protocol", () => {
     expect(balBefore).toBeOk(Cl.uint(4_500_000)); // 5M - 500K
 
     const { result: cancelResult } = simnet.callPublicFn(
-      "rho-core-v2",
+      "rho-core-v3",
       "cancel-offer",
       [Cl.uint(1)],
       wallet1
@@ -141,16 +141,16 @@ describe("Rho Protocol", () => {
     simnet.callPublicFn("mock-sbtc", "mint", [Cl.uint(5_000_000), Cl.principal(wallet1)], deployer);
     simnet.callPublicFn("mock-sbtc", "mint", [Cl.uint(5_000_000), Cl.principal(wallet2)], deployer);
 
-    simnet.callPublicFn("rho-core-v2", "post-offer",
+    simnet.callPublicFn("rho-core-v3", "post-offer",
       [Cl.uint(1_000_000), Cl.uint(100_000_000), Cl.uint(2), Cl.uint(1_000_000)], wallet1);
-    simnet.callPublicFn("rho-core-v2", "accept-offer", [Cl.uint(1), Cl.uint(1_000_000)], wallet2);
+    simnet.callPublicFn("rho-core-v3", "accept-offer", [Cl.uint(1), Cl.uint(1_000_000)], wallet2);
     simnet.callPublicFn("pox-rate-oracle-v2", "submit-cycle-rate",
       [Cl.uint(0), Cl.uint(100), Cl.uint(0), Cl.uint(1_000_000)], deployer);
 
-    simnet.callPublicFn("rho-core-v2", "settle-cycle", [Cl.uint(1), Cl.uint(0)], deployer);
+    simnet.callPublicFn("rho-core-v3", "settle-cycle", [Cl.uint(1), Cl.uint(0)], deployer);
 
     // Second settle of same cycle must fail
-    const { result } = simnet.callPublicFn("rho-core-v2", "settle-cycle", [Cl.uint(1), Cl.uint(0)], deployer);
+    const { result } = simnet.callPublicFn("rho-core-v3", "settle-cycle", [Cl.uint(1), Cl.uint(0)], deployer);
     expect(result).toBeErr(Cl.uint(105)); // ERR-CYCLE-ALREADY-SETTLED
   });
 
@@ -159,7 +159,7 @@ describe("Rho Protocol", () => {
 
     // MAX-NOTIONAL-USTX is 1,000,000,000,000 (1M STX) — one uSTX over must fail
     const { result } = simnet.callPublicFn(
-      "rho-core-v2",
+      "rho-core-v3",
       "post-offer",
       [Cl.uint(1_000_000_000_001), Cl.uint(100_000_000), Cl.uint(1), Cl.uint(1_000_000)],
       wallet1
@@ -172,7 +172,7 @@ describe("Rho Protocol", () => {
 
     // MAX-DURATION-CYCLES is 13 (~6 months)
     const { result } = simnet.callPublicFn(
-      "rho-core-v2",
+      "rho-core-v3",
       "post-offer",
       [Cl.uint(1_000_000), Cl.uint(100_000_000), Cl.uint(14), Cl.uint(1_000_000)],
       wallet1
@@ -184,12 +184,12 @@ describe("Rho Protocol", () => {
     simnet.callPublicFn("mock-sbtc", "mint", [Cl.uint(10_000_000), Cl.principal(wallet1)], deployer);
     simnet.callPublicFn("mock-sbtc", "mint", [Cl.uint(10_000_000), Cl.principal(wallet2)], deployer);
 
-    simnet.callPublicFn("rho-core-v2", "post-offer",
+    simnet.callPublicFn("rho-core-v3", "post-offer",
       [Cl.uint(1_000_000), Cl.uint(100_000_000), Cl.uint(1), Cl.uint(1_000_000)], wallet1);
-    simnet.callPublicFn("rho-core-v2", "accept-offer", [Cl.uint(1), Cl.uint(2_000_000)], wallet2);
+    simnet.callPublicFn("rho-core-v3", "accept-offer", [Cl.uint(1), Cl.uint(2_000_000)], wallet2);
 
     // While active, the swap consumes one slot and its notional
-    const during = simnet.callReadOnlyFn("rho-core-v2", "get-pilot-utilisation", [], deployer).result;
+    const during = simnet.callReadOnlyFn("rho-core-v3", "get-pilot-utilisation", [], deployer).result;
     expect(during).toBeTuple({
       "active-notional-ustx": Cl.uint(1_000_000),
       "active-swap-count": Cl.uint(1),
@@ -199,12 +199,12 @@ describe("Rho Protocol", () => {
 
     simnet.callPublicFn("pox-rate-oracle-v2", "submit-cycle-rate",
       [Cl.uint(0), Cl.uint(300), Cl.uint(64), Cl.uint(1_000_000)], deployer);
-    simnet.callPublicFn("rho-core-v2", "settle-cycle", [Cl.uint(1), Cl.uint(0)], deployer);
-    simnet.callPublicFn("rho-core-v2", "close-swap", [Cl.uint(1)], deployer);
+    simnet.callPublicFn("rho-core-v3", "settle-cycle", [Cl.uint(1), Cl.uint(0)], deployer);
+    simnet.callPublicFn("rho-core-v3", "close-swap", [Cl.uint(1)], deployer);
 
     // After closing, capacity must return to full — otherwise the pilot
     // would permanently fill up after 25 swaps had ever existed.
-    const after = simnet.callReadOnlyFn("rho-core-v2", "get-pilot-utilisation", [], deployer).result;
+    const after = simnet.callReadOnlyFn("rho-core-v3", "get-pilot-utilisation", [], deployer).result;
     expect(after).toBeTuple({
       "active-notional-ustx": Cl.uint(0),
       "active-swap-count": Cl.uint(0),
@@ -217,12 +217,12 @@ describe("Rho Protocol", () => {
     simnet.callPublicFn("mock-sbtc", "mint", [Cl.uint(5_000_000), Cl.principal(wallet1)], deployer);
     simnet.callPublicFn("mock-sbtc", "mint", [Cl.uint(5_000_000), Cl.principal(wallet2)], deployer);
 
-    simnet.callPublicFn("rho-core-v2", "post-offer",
+    simnet.callPublicFn("rho-core-v3", "post-offer",
       [Cl.uint(1_000_000), Cl.uint(100_000_000), Cl.uint(1), Cl.uint(1_000_000)], wallet1);
-    simnet.callPublicFn("rho-core-v2", "accept-offer", [Cl.uint(1), Cl.uint(1_000_000)], wallet2);
+    simnet.callPublicFn("rho-core-v3", "accept-offer", [Cl.uint(1), Cl.uint(1_000_000)], wallet2);
 
     // No oracle submission — settle must fail
-    const { result } = simnet.callPublicFn("rho-core-v2", "settle-cycle", [Cl.uint(1), Cl.uint(0)], deployer);
+    const { result } = simnet.callPublicFn("rho-core-v3", "settle-cycle", [Cl.uint(1), Cl.uint(0)], deployer);
     expect(result).toBeErr(Cl.uint(107)); // ERR-ORACLE-RATE-NOT-FOUND
   });
 });

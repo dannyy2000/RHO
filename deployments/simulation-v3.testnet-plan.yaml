@@ -1,0 +1,99 @@
+---
+id: 0
+name: Rho v3 evidence run - full lifecycle plus liquidation
+network: testnet
+stacks-node: "https://api.testnet.hiro.so"
+bitcoin-node: "http://blockstack:blockstacksystem@bitcoind.testnet.stacks.co:18332"
+plan:
+  batches:
+    # --- Swap 1: healthy swap, runs to completion -------------------------
+    # 1,000,000 STX notional at the pilot cap, fixed 500,000/cycle, 3 cycles,
+    # both sides well collateralised. Cycle rates are already on the v2 oracle,
+    # which rho-core-v3 reads.
+    - id: 0
+      transactions:
+        - contract-call:
+            contract-id: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v3
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            method: post-offer
+            parameters:
+              - u1000000000000
+              - u500000
+              - u3
+              - u10000000
+            cost: 120000
+        - contract-call:
+            contract-id: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v3
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            method: accept-offer
+            parameters:
+              - u1
+              - u10000000
+            cost: 120000
+      epoch: "2.1"
+
+    - id: 1
+      transactions:
+        - contract-call:
+            contract-id: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v3
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            method: settle-cycle
+            parameters: [u1, u8]
+            cost: 160000
+        - contract-call:
+            contract-id: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v3
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            method: settle-cycle
+            parameters: [u1, u9]
+            cost: 160000
+        - contract-call:
+            contract-id: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v3
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            method: settle-cycle
+            parameters: [u1, u10]
+            cost: 160000
+        - contract-call:
+            contract-id: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v3
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            method: close-swap
+            parameters: [u1]
+            cost: 160000
+      epoch: "2.1"
+
+    # --- Swap 2: deliberately under-margined, must liquidate --------------
+    # Fixed 600,000/cycle over 3 cycles, but the variable party posts only
+    # 700,000 sats. Enough to pay cycle 10's shortfall, nowhere near the 110%
+    # margin on the two cycles that would remain.
+    - id: 2
+      transactions:
+        - contract-call:
+            contract-id: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v3
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            method: post-offer
+            parameters:
+              - u1000000000000
+              - u600000
+              - u3
+              - u10000000
+            cost: 120000
+        - contract-call:
+            contract-id: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v3
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            method: accept-offer
+            parameters:
+              - u2
+              - u700000
+            cost: 120000
+      epoch: "2.1"
+
+    # Cycle 10 rate is 465,831, below the 600,000 fixed rate, so the variable
+    # party owes 134,169 and is then left under the maintenance margin.
+    - id: 3
+      transactions:
+        - contract-call:
+            contract-id: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v3
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            method: settle-cycle
+            parameters: [u2, u10]
+            cost: 200000
+      epoch: "2.1"

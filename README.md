@@ -3,7 +3,7 @@
 > The hedge for Stacks' junior tranche — fixed-rate protection for STX-only stackers against the yield volatility PoX-5's Bitcoin Staking bonds created.
 
 [![Clarinet](https://img.shields.io/badge/Clarinet-3.11.0-orange)](https://github.com/hirosystems/clarinet)
-[![Tests](https://img.shields.io/badge/tests-19%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-22%20passing-brightgreen)](#testing)
 [![Clarity](https://img.shields.io/badge/Clarity-v2-blue)](https://docs.stacks.co/clarity)
 [![Network](https://img.shields.io/badge/network-Stacks%20Testnet-purple)](https://explorer.hiro.so)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -24,26 +24,36 @@ All contracts are live and independently verifiable, deployed from `ST14V779KZH7
 
 | Contract | Explorer | Deployment tx |
 |----------|----------|---------------|
-| `rho-core-v2` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v2?chain=testnet) | [`a518bfe8…`](https://explorer.hiro.so/txid/0xa518bfe8005427d37a9d982c6b0310c96db9cf85ef9afe91d45be7184cfc8d7c?chain=testnet) |
+| `rho-core-v3` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v3?chain=testnet) | [`aabf09a8…`](https://explorer.hiro.so/txid/0xaabf09a88b0ac1d6b4c86f01dfb0ddd431cf4e3c4ed94b2634b39f758a590ff9?chain=testnet) |
 | `pox-rate-oracle-v2` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.pox-rate-oracle-v2?chain=testnet) | [`ac0e8ff2…`](https://explorer.hiro.so/txid/0xac0e8ff21ce2dfec2339ee27aeb9eb8a561b21dfc12926d07ac5b68d93e300a5?chain=testnet) |
 | `mock-sbtc` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.mock-sbtc?chain=testnet) | [`ecf23cd2…`](https://explorer.hiro.so/txid/0xecf23cd2f3cd15904b5c8cd11bacea1f9b6eef3e814c0a25b71fb38a3161d82b?chain=testnet) |
 | `sip-010-trait` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.sip-010-trait?chain=testnet) | [`2f936d9b…`](https://explorer.hiro.so/txid/0x2f936d9b2d62a810cc8dbb29833fc81776d03fcda22ef806fbc451416d355001?chain=testnet) |
 
-### Why there is a v2
+### Version history — two defects found and fixed
 
-The first deployment of `rho-core` and `pox-rate-oracle` (2026-09-19, earlier the same day) carried a **rate-precision defect**, found by running live PoX-5 figures through the contract rather than the toy values used in unit tests.
+Clarity contracts are immutable and Stacks contract names cannot be reused, so each fix ships under a new name. Superseded versions remain on chain and are deliberately not linked above. `mock-sbtc` and `sip-010-trait` were unaffected throughout.
 
-The rate unit was *sats per 1,000,000 uSTX* — per 1 STX. Real PoX yield is roughly **0.5 sats per STX per cycle**, so under Clarity's integer division every real cycle truncated to a rate of **0**. Every settlement would have moved zero sats, liquidation would never have triggered, and the protocol would have been inert against real data — while passing every test, because the tests used a stacked supply of 1,000,000 uSTX instead of the real 441 billion.
+**v1 → v2: rate-precision defect.** Found by running live PoX-5 figures through the contract instead of the toy values the unit tests used.
 
-`-v2` raises the scalar to *sats per 1,000,000 STX* (`1e12`). Cycle 142 now yields a rate of **679,497** rather than 0. The regression is pinned by tests in `tests/real-data-check.test.ts`, which assert against live cycle figures so the unit cannot silently regress again.
+The rate unit was *sats per 1,000,000 uSTX* — per 1 STX. Real PoX yield is roughly **0.5 sats per STX per cycle**, so under Clarity's integer division every real cycle truncated to a rate of **0**. Every settlement would have moved zero sats and the protocol would have been inert against real data — while passing every test, because the tests staked 1,000,000 uSTX against a real stacked supply of 441 billion. `RATE-SCALAR` is now `1e12`; cycle 142 yields **679,497** instead of 0. Pinned by `tests/real-data-check.test.ts`.
 
-Clarity contracts are immutable and Stacks contract names cannot be reused, so the fix ships as a new name. The superseded v1 contracts remain on chain and are deliberately not linked here; `mock-sbtc` and `sip-010-trait` were unaffected and are unchanged.
+**v2 → v3: capacity release written twice in the liquidation branch.** Found by auditing the liquidation path specifically, because no test or simulation had ever entered it.
+
+The branch decremented `active-notional-ustx` and `active-swap-count` twice. With a single active swap the first decrement reaches zero and the second **underflows**, aborting the whole call. The consequences compound:
+
+1. Liquidation could never fire — the collateral safety mechanism was dead
+2. `settle-cycle` failed permanently for the affected swap
+3. `close-swap` requires every cycle settled, so **both parties' collateral was trapped**
+
+Nothing caught it because every test and the first simulation sized collateral comfortably and never breached the margin. The bug lived only in the path nobody had exercised. `tests/liquidation.test.ts` now covers that branch end to end, and the fix is [demonstrated on chain](#testnet-evidence--full-lifecycle-and-liquidation).
+
+Both defects were found and fixed before any mainnet exposure, which is the argument for the capped, staged rollout in [Capped Pilot Design](#capped-pilot-design) rather than an argument against it.
 
 **Verify the deployed behaviour without trusting this README.** The pilot caps are readable directly off chain:
 
 ```bash
 curl -s -X POST \
-  "https://api.testnet.hiro.so/v2/contracts/call-read/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7/rho-core-v2/get-pilot-caps" \
+  "https://api.testnet.hiro.so/v2/contracts/call-read/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7/rho-core-v3/get-pilot-caps" \
   -H "Content-Type: application/json" \
   -d '{"sender":"ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7","arguments":[]}'
 ```
@@ -60,51 +70,70 @@ curl -s "https://api.testnet.hiro.so/v2/contracts/interface/ST14V779KZH7Q62TXJ1G
 
 ---
 
-## Testnet Simulation — Full Lifecycle on Real Data
+## Testnet Evidence — Full Lifecycle and Liquidation
 
-A complete three-cycle swap was executed against the live testnet contracts on **2026-09-19**, driven by **real observed PoX-5 figures** rather than invented numbers. Every transaction below is on chain and independently checkable.
+Two swaps were executed against the live `rho-core-v3` contract on **2026-09-19**, driven by **real observed PoX-5 figures** rather than invented numbers. Every transaction is on chain and independently checkable.
 
-**Swap terms:** 1,000,000 STX notional (the per-swap pilot cap), fixed at 500,000 sats per 1M STX per cycle, 3 cycles, 10,000,000 sats collateral posted by each side.
+Cycle inputs come from mainnet cycles 140-142 applied to testnet cycles 8-10. Miner revenue and the Genesis Bond obligation are the real amounts; 441,576,024 STX is the actual stacked supply. Rates were derived by the oracle on chain, not supplied:
 
-**Cycle inputs** — taken from mainnet cycles 140–142, applied to testnet cycles 8–10. Miner revenue and the Genesis Bond obligation are the real amounts; 441,576,024 STX is the actual stacked supply.
+| Testnet cycle | Real source | Miner revenue | Tranche 1 owed | Rate derived on chain |
+|---|---|---|---|---|
+| 8 | mainnet 142 | 3.83 BTC | 0.3 BTC | **679,497** |
+| 9 | mainnet 141 | 2.98 BTC | 0.3 BTC | **515,879** |
+| 10 | mainnet 140 | 2.72 BTC | 0.3 BTC | **465,831** |
 
-| Testnet cycle | Real source | Miner revenue | Tranche 1 owed | Derived rate | vs fixed 500,000 | Net flow |
-|---|---|---|---|---|---|---|
-| 8 | mainnet 142 | 3.83 BTC | 0.3 BTC | **679,497** | above | 179,497 → variable |
-| 9 | mainnet 141 | 2.98 BTC | 0.3 BTC | **515,879** | above | 15,879 → variable |
-| 10 | mainnet 140 | 2.72 BTC | 0.3 BTC | **465,831** | below | 34,169 → fixed |
+### Swap 1 — healthy swap, runs to completion
 
-Cycle 10 matters: it is the only cycle where the actual rate lands *below* the fixed rate, so the reverse settlement path and the maintenance-margin check are exercised, not just the profitable direction.
+1,000,000 STX notional (the per-swap pilot cap), fixed at 500,000 per cycle, 3 cycles, 10,000,000 sats collateral each side.
 
-**Transactions**
+| Step | Settlement | Transaction |
+|---|---|---|
+| Post offer | — | [`357caea6…`](https://explorer.hiro.so/txid/0x357caea632dade13d86214c68f60a803dd9788a6a216cc24a9857cd839224c46?chain=testnet) |
+| Accept offer | — | [`cd6f1496…`](https://explorer.hiro.so/txid/0xcd6f1496f92cb9b90a2d2f2c12fe0944091c8509f3d9e4e49b3cad7863f25837?chain=testnet) |
+| Settle cycle 8 | fixed 500,000 / variable 679,497 | [`420bd994…`](https://explorer.hiro.so/txid/0x420bd994da3676fb7c87ab20ba094a53bc70b97f36d1190f94c308b67a252323?chain=testnet) |
+| Settle cycle 9 | fixed 500,000 / variable 515,879 | [`154f604c…`](https://explorer.hiro.so/txid/0x154f604c0f9f0f6fa78fc91b2b28781d656898c666f33be5c159b0a6e717a13c?chain=testnet) |
+| Settle cycle 10 | fixed 500,000 / variable 465,831 | [`c85a9746…`](https://explorer.hiro.so/txid/0xc85a97460736b731b7d903cd874bfff3ab64b7780c245a8b086debccaaf4c7b9?chain=testnet) |
+| Close swap | status 1, both balances released | [`f229c03e…`](https://explorer.hiro.so/txid/0xf229c03e45206036ffdcacba89a7f63d37eb25cf1b915719f738df1b4d7b3e06?chain=testnet) |
+
+Cycle 10 is the load-bearing case: the actual rate lands *below* the fixed rate, so the reverse settlement direction is exercised rather than only the profitable one. Final state confirmed `cycles-settled: 3`, `status: 1` (completed), both collateral balances zero.
+
+### Swap 2 — deliberately under-margined, must liquidate
+
+Same notional, fixed at 600,000 per cycle over 3 cycles, but the variable party posts only **700,000 sats**: enough to pay cycle 10's 134,169 shortfall, nowhere near the 110% margin required against the two cycles that would remain.
 
 | Step | Transaction |
-|------|-------------|
-| Mint collateral | [`dcbf4590…`](https://explorer.hiro.so/txid/0xdcbf4590ae4ea355f4c53da1b4fada92bca6afdea784003e76fd462a8c516b35?chain=testnet) |
-| Post offer | [`580d5dc4…`](https://explorer.hiro.so/txid/0x580d5dc45c8bf073a2a6b66705796d16a51b71d3f78736cd788d517864e554ad?chain=testnet) |
-| Accept offer | [`b9a25138…`](https://explorer.hiro.so/txid/0xb9a25138212a7d18e73fcacc49ecb518ada7cc8a682bd51be8f27357b4dc4ec1?chain=testnet) |
-| Oracle — cycle 8 | [`97130e16…`](https://explorer.hiro.so/txid/0x97130e1681c2e29dedf4d4266752721eb7bb3fbf314f5d04db63ba8196e10826?chain=testnet) |
-| Settle cycle 8 | [`848d1061…`](https://explorer.hiro.so/txid/0x848d10616c92fb5de663fb9be76b71022c407a301b36f0d1d018ca37ab0a1d08?chain=testnet) |
-| Oracle — cycle 9 | [`e8a59b71…`](https://explorer.hiro.so/txid/0xe8a59b71cc430aff8c55a0e1ff4a8c827131c0c038dddef13e102a68e78ec9ac?chain=testnet) |
-| Oracle — cycle 10 | [`a6e312c1…`](https://explorer.hiro.so/txid/0xa6e312c1b960827ee72dbe1ee9defcb98aacf7ad5be94d4c74bca51aedaf77fe?chain=testnet) |
-| Settle cycle 9 | [`aa618dec…`](https://explorer.hiro.so/txid/0xaa618dec246e071394e8c2abf3778c39500620592c51af1da9ed9f7bfd5e9e79?chain=testnet) |
-| Settle cycle 10 | [`38ed192c…`](https://explorer.hiro.so/txid/0x38ed192c96337ab7f8fd9f4723ddf28348a2cb96ae21461da8a3509bc76942dc?chain=testnet) |
-| Close swap | [`4f3ea368…`](https://explorer.hiro.so/txid/0x4f3ea36861d684f2a4585f27e91badefedebeb4f908a1325a56fd173ca44d305?chain=testnet) |
+|---|---|
+| Post offer | [`52d5cfa1…`](https://explorer.hiro.so/txid/0x52d5cfa1d683f9ccf675c28f3e85dc23ddfd86f9fc63e615e34acd0a0a945067?chain=testnet) |
+| Accept offer (under-margined) | [`d23d0a08…`](https://explorer.hiro.so/txid/0xd23d0a08eca9f7c27a6c239c2e2b22a78bd394da7cc2d2c1b314f14cdb5fb10f?chain=testnet) |
+| Settle cycle 10 → **liquidation** | [`6746b274…`](https://explorer.hiro.so/txid/0x6746b274782a92be11a9f4f061c8d6a4440f0c549f80a13337e80883ff363bd7?chain=testnet) |
 
-**Verified outcomes**, read back from chain rather than asserted here:
+That transaction emitted both events:
 
-- Each `get-cycle-settlement` record holds the expected pair — cycle 8 `(500,000, 679,497)`, cycle 9 `(500,000, 515,879)`, cycle 10 `(500,000, 465,831)`.
-- The swap closed with `status: 1` (completed), `cycles-settled: 3`, and both collateral balances at zero.
-- `get-pilot-utilisation` returned to `0` active notional and `0` active swaps, with full headroom restored — the capacity-release path verified on chain, not just in tests.
-- The `rho-core-v2` escrow received exactly **20,000,000** sats and sent exactly **20,000,000**, holding zero afterwards. No value created, lost, or stranded.
+```
+(tuple (cycle u10) (event "liquidation") (swap-id u2))
+(tuple (cycle u10) (event "cycle-settled") (fixed-payment u600000) (swap-id u2) (variable-payment u465831))
+```
 
-**Honest limitations.** Both legs were signed by the same principal, so this exercises contract behaviour rather than counterparty dynamics or price discovery. The testnet cycle numbers (8–10) are not the mainnet cycles the data came from; only the economic inputs are real. Collateral is `mock-sbtc`, not bridged sBTC. Reproduce with `deployments/simulation.testnet-plan.yaml` and `deployments/simulation-part2.testnet-plan.yaml`.
+Final state `status: 2` (liquidated) after 1 of 3 cycles, both collateral balances released to their owners. **This same transaction would have aborted with an arithmetic underflow on v2** — it is the direct proof that the v3 fix works under real conditions.
+
+### Verified outcomes
+
+Read back from chain rather than asserted here:
+
+- Settlement records hold the expected pairs for all three cycles
+- Swap 1 closed `status: 1`; swap 2 liquidated `status: 2`
+- `get-pilot-utilisation` returned `0` active notional and `0` active swaps with full headroom after both swaps ended — capacity released exactly once on each path, including liquidation
+- The `rho-core-v3` escrow received exactly **30,700,000** sats and sent exactly **30,700,000**, holding zero. No value created, lost, or stranded across either swap
+
+### Honest limitations
+
+Both legs were signed by the same principal, so this exercises contract behaviour rather than counterparty dynamics or price discovery. Testnet cycle numbers (8-10) are not the mainnet cycles the data came from; only the economic inputs are real. Collateral is `mock-sbtc`, not bridged sBTC. Reproduce with `deployments/simulation-v3.testnet-plan.yaml`.
 
 ---
 
 ## Table of Contents
 
-- [Testnet Simulation](#testnet-simulation--full-lifecycle-on-real-data)
+- [Testnet Evidence](#testnet-evidence--full-lifecycle-and-liquidation)
 - [Deployed Contracts](#deployed-contracts--stacks-testnet)
 - [Background — What is PoX yield?](#background--what-is-pox-yield)
 - [The Problem](#the-problem)
@@ -483,7 +512,7 @@ Stores verified PoX-5 Tranche 2 (STX-only staker) yield rates for each cycle. Th
 
 ---
 
-### `rho-core.clar` — deployed as `rho-core-v2`
+### `rho-core.clar` — deployed as `rho-core-v3`
 
 The core swap protocol. Manages the complete lifecycle of offers and swaps. Holds all collateral in escrow. Enforces maintenance margin rules. Settles each cycle based on oracle data.
 
@@ -626,8 +655,8 @@ npm test
 
 Expected output:
 ```
-Test Files  5 passed (5)
-     Tests  19 passed (19)
+Test Files  6 passed (6)
+     Tests  22 passed (22)
 ```
 
 ### Start the frontend
@@ -672,6 +701,9 @@ The test suite covers the full swap lifecycle and all error paths. Tests run aga
 | Notional cap enforced | `rho-core.test.ts` | Offer above the per-swap notional cap returns `ERR-EXCEEDS-NOTIONAL-CAP` |
 | Duration cap enforced | `rho-core.test.ts` | Offer above 13 cycles returns `ERR-EXCEEDS-DURATION-CAP` |
 | Pilot capacity released | `rho-core.test.ts` | Notional and slot return to the pool after a swap closes |
+| Margin breach settles | `liquidation.test.ts` | An under-margined swap settles rather than aborting — the v2 defect |
+| Liquidation pays out | `liquidation.test.ts` | Swap marks liquidated, both parties receive their correct balances |
+| Capacity released once | `liquidation.test.ts` | Liquidation restores full headroom instead of underflowing |
 | Waterfall rate derivation | `pox-rate-oracle.test.ts` | Tranche 2 rate = (miner revenue − Tranche 1 obligation) × 85%, per PoX-5 |
 | Tranche 1 subtracted first | `pox-rate-oracle.test.ts` | Same revenue with zero bonds yields a higher Tranche 2 rate — the gap Genesis Bond growth takes |
 | Obligation bound | `pox-rate-oracle.test.ts` | Obligation exceeding miner revenue returns `ERR-OBLIGATION-EXCEEDS-REVENUE` rather than underflowing |
@@ -835,7 +867,7 @@ This is Rho's response to the Q2 feedback, applying to the **Stacks Endowment Q3
 | Q2 review asked for | Status |
 |---|---|
 | Verifiable deployed contracts | **Done.** Live on testnet with explorer links and read-only calls anyone can run — see [Deployed Contracts](#deployed-contracts--stacks-testnet). |
-| Meaningful testnet usage or simulation history | **Done.** Full three-cycle lifecycle executed on chain against real PoX-5 figures, with transaction hashes and verified outcomes — see [Testnet Simulation](#testnet-simulation--full-lifecycle-on-real-data). |
+| Meaningful testnet usage or simulation history | **Done.** Full three-cycle lifecycle executed on chain against real PoX-5 figures, with transaction hashes and verified outcomes — see [Testnet Evidence](#testnet-evidence--full-lifecycle-and-liquidation). |
 | Updated PoX assumptions | **Done.** Rewritten around the PoX-5 three-tranche waterfall; the pre-PoX-5 pro-rata formula is gone. |
 | Documented oracle and settlement model | **Done.** Raw inputs stored on chain so the rate is independently recomputable, plus dedicated oracle tests. One dependency remains open and is disclosed rather than assumed — see [How the Rate is Calculated](#how-the-rate-is-calculated). |
 | Capped pilot design with risk controls | **Done.** Enforced as contract constants no key holder can raise — see [Capped Pilot Design](#capped-pilot-design). |
