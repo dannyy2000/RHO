@@ -47,14 +47,14 @@ describe("rate math against real observed PoX-5 data", () => {
 
     // 1,000,000 STX notional — the per-swap pilot cap — at a fixed rate of
     // 500,000 sats per 1M STX per cycle, against cycle 142's actual 679,497.
-    simnet.callPublicFn("rho-core-v3", "post-offer",
+    simnet.callPublicFn("rho-core-v4", "post-offer",
       [Cl.uint(1_000_000_000_000), Cl.uint(500_000), Cl.uint(1), Cl.uint(10_000_000)], deployer);
-    simnet.callPublicFn("rho-core-v3", "accept-offer",
+    simnet.callPublicFn("rho-core-v4", "accept-offer",
       [Cl.uint(1), Cl.uint(10_000_000)], deployer);
     simnet.callPublicFn("pox-rate-oracle-v2", "submit-cycle-rate",
       [Cl.uint(0), Cl.uint(383_000_000), Cl.uint(TRANCHE_1_PER_CYCLE), Cl.uint(STACKED_USTX)], deployer);
 
-    const { result } = simnet.callPublicFn("rho-core-v3", "settle-cycle",
+    const { result } = simnet.callPublicFn("rho-core-v4", "settle-cycle",
       [Cl.uint(1), Cl.uint(0)], deployer);
 
     // Both legs must move real sats: 1e12 uSTX x rate / 1e12 = rate.

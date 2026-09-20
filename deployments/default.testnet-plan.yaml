@@ -9,9 +9,9 @@ plan:
     - id: 0
       transactions:
         - contract-publish:
-            contract-name: rho-core-v3
+            contract-name: rho-core-v4
             expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
-            cost: 250000
+            cost: 260000
             path: contracts/rho-core.clar
             anchor-block-only: true
             clarity-version: 2

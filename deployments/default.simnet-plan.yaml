@@ -80,7 +80,7 @@ plan:
       path: contracts/pox-rate-oracle.clar
       clarity-version: 2
     - transaction-type: emulated-contract-publish
-      contract-name: rho-core-v3
+      contract-name: rho-core-v4
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/rho-core.clar
       clarity-version: 2

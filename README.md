@@ -3,7 +3,7 @@
 > The hedge for Stacks' junior tranche — fixed-rate protection for STX-only stackers against the yield volatility PoX-5's Bitcoin Staking bonds created.
 
 [![Clarinet](https://img.shields.io/badge/Clarinet-3.11.0-orange)](https://github.com/hirosystems/clarinet)
-[![Tests](https://img.shields.io/badge/tests-26%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-35%20passing-brightgreen)](#testing)
 [![Clarity](https://img.shields.io/badge/Clarity-v2-blue)](https://docs.stacks.co/clarity)
 [![Network](https://img.shields.io/badge/network-Stacks%20Testnet-purple)](https://explorer.hiro.so)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -24,12 +24,12 @@ All contracts are live and independently verifiable, deployed from `ST14V779KZH7
 
 | Contract | Explorer | Deployment tx |
 |----------|----------|---------------|
-| `rho-core-v3` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v3?chain=testnet) | [`aabf09a8…`](https://explorer.hiro.so/txid/0xaabf09a88b0ac1d6b4c86f01dfb0ddd431cf4e3c4ed94b2634b39f758a590ff9?chain=testnet) |
+| `rho-core-v4` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v4?chain=testnet) | [`014d109e…`](https://explorer.hiro.so/txid/0x014d109e5486f8261cb179e1ce4473bdbe63b727227ea8f3eea427e73450e854?chain=testnet) |
 | `pox-rate-oracle-v2` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.pox-rate-oracle-v2?chain=testnet) | [`ac0e8ff2…`](https://explorer.hiro.so/txid/0xac0e8ff21ce2dfec2339ee27aeb9eb8a561b21dfc12926d07ac5b68d93e300a5?chain=testnet) |
 | `mock-sbtc` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.mock-sbtc?chain=testnet) | [`ecf23cd2…`](https://explorer.hiro.so/txid/0xecf23cd2f3cd15904b5c8cd11bacea1f9b6eef3e814c0a25b71fb38a3161d82b?chain=testnet) |
 | `sip-010-trait` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.sip-010-trait?chain=testnet) | [`2f936d9b…`](https://explorer.hiro.so/txid/0x2f936d9b2d62a810cc8dbb29833fc81776d03fcda22ef806fbc451416d355001?chain=testnet) |
 
-### Version history — two defects found and fixed
+### Version history — three defects found and fixed
 
 Clarity contracts are immutable and Stacks contract names cannot be reused, so each fix ships under a new name. Superseded versions remain on chain and are deliberately not linked above. `mock-sbtc` and `sip-010-trait` were unaffected throughout.
 
@@ -47,13 +47,21 @@ The branch decremented `active-notional-ustx` and `active-swap-count` twice. Wit
 
 Nothing caught it because every test and the first simulation sized collateral comfortably and never breached the margin. The bug lived only in the path nobody had exercised. `tests/liquidation.test.ts` now covers that branch end to end, and the fix is [demonstrated on chain](#testnet-evidence--full-lifecycle-and-liquidation).
 
-Both defects were found and fixed before any mainnet exposure, which is the argument for the capped, staged rollout in [Capped Pilot Design](#capped-pilot-design) rather than an argument against it.
+**v3 → v4: cycle numbering did not match real PoX cycles.** Found by comparing the contract's output against the network's own `reward_cycle_id`.
+
+`get-current-pox-cycle` derived the cycle as `burn-block-height / 2100`. That is wrong on every network. It ignores `first-burnchain-block-height` — 666,050 on mainnet, so every cycle number was offset by **317** — and hardcodes a 2,100 block cycle when testnet's reward cycle is **900** blocks. On testnet the contract reported cycle 8 while the network was on cycle **20**.
+
+Settlement arithmetic stayed correct, because the oracle and core used the same number as a shared key. But the numbers bore no relationship to real PoX cycles, so a swap could not be mapped to the cycles it was meant to cover — and on testnet a "cycle" ran 2.33× longer than a real one.
+
+v4 reads the cycle from the PoX-5 boot contract instead of deriving it, which removes both assumptions and cannot drift from consensus. Verified live: the network reports cycle 20, v3 reports 8, v4 reports **20**.
+
+All three defects were found and fixed before any mainnet exposure, which is the argument for the capped, staged rollout in [Capped Pilot Design](#capped-pilot-design) rather than an argument against it.
 
 **Verify the deployed behaviour without trusting this README.** The pilot caps are readable directly off chain:
 
 ```bash
 curl -s -X POST \
-  "https://api.testnet.hiro.so/v2/contracts/call-read/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7/rho-core-v3/get-pilot-caps" \
+  "https://api.testnet.hiro.so/v2/contracts/call-read/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7/rho-core-v4/get-pilot-caps" \
   -H "Content-Type: application/json" \
   -d '{"sender":"ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7","arguments":[]}'
 ```
@@ -72,7 +80,7 @@ curl -s "https://api.testnet.hiro.so/v2/contracts/interface/ST14V779KZH7Q62TXJ1G
 
 ## Testnet Evidence — Full Lifecycle and Liquidation
 
-Two swaps were executed against the live `rho-core-v3` contract on **2026-09-19**, driven by **real observed PoX-5 figures** rather than invented numbers. Every transaction is on chain and independently checkable.
+Two swaps were executed against the live `rho-core-v4` contract on **2026-09-19**, driven by **real observed PoX-5 figures** rather than invented numbers. Every transaction is on chain and independently checkable.
 
 Cycle inputs come from mainnet cycles 140-142 applied to testnet cycles 8-10. Miner revenue and the Genesis Bond obligation are the real amounts; 441,576,024 STX is the actual stacked supply. Rates were derived by the oracle on chain, not supplied:
 
@@ -123,7 +131,7 @@ Read back from chain rather than asserted here:
 - Settlement records hold the expected pairs for all three cycles
 - Swap 1 closed `status: 1`; swap 2 liquidated `status: 2`
 - `get-pilot-utilisation` returned `0` active notional and `0` active swaps with full headroom after both swaps ended — capacity released exactly once on each path, including liquidation
-- The `rho-core-v3` escrow received exactly **30,700,000** sats and sent exactly **30,700,000**, holding zero. No value created, lost, or stranded across either swap
+- The `rho-core-v4` escrow received exactly **30,700,000** sats and sent exactly **30,700,000**, holding zero. No value created, lost, or stranded across either swap
 
 ### Honest limitations
 
@@ -516,7 +524,7 @@ Stores verified PoX-5 Tranche 2 (STX-only staker) yield rates for each cycle. Th
 
 ---
 
-### `rho-core.clar` — deployed as `rho-core-v3`
+### `rho-core.clar` — deployed as `rho-core-v4`
 
 The core swap protocol. Manages the complete lifecycle of offers and swaps. Holds all collateral in escrow. Enforces maintenance margin rules. Settles each cycle based on oracle data.
 
@@ -659,8 +667,8 @@ npm test
 
 Expected output:
 ```
-Test Files  7 passed (7)
-     Tests  26 passed (26)
+Test Files  8 passed (8)
+     Tests  35 passed (35)
 ```
 
 ### Start the frontend

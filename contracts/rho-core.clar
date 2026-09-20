@@ -113,8 +113,19 @@
 (define-read-only (get-offer-count) (var-get offer-nonce))
 (define-read-only (get-swap-count) (var-get swap-nonce))
 
+;; Cycle numbering is read from the PoX-5 boot contract rather than derived.
+;;
+;; The previous implementation computed (/ burn-block-height u2100), which is
+;; wrong on every network: it ignores first-burnchain-block-height (666,050 on
+;; mainnet, so every cycle number was offset by 317) and hardcodes a 2,100
+;; block cycle when testnet's reward cycle is 900 blocks. Reading the boot
+;; contract removes both assumptions and cannot drift from consensus.
+;;
+;; MAINNET DEPLOYMENT: change this principal to
+;; 'SP000000000000000000002Q6VF98.pox-5 - boot contract addresses differ by
+;; network. This is the only line that must change.
 (define-read-only (get-current-pox-cycle)
-  (/ burn-block-height u2100))
+  (contract-call? 'ST000000000000000000002AMW42H.pox-5 current-pox-reward-cycle))
 
 ;; Pilot caps and current utilisation, readable by anyone.
 (define-read-only (get-pilot-caps)

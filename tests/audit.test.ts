@@ -20,13 +20,13 @@ describe("audit: fixed-party insolvency", () => {
     // Fixed party posts only 200,000 sats against a 1M STX notional at a low
     // fixed rate. When the actual rate comes in far above, it owes 579,497 but
     // holds only 200,000.
-    simnet.callPublicFn("rho-core-v3", "post-offer",
+    simnet.callPublicFn("rho-core-v4", "post-offer",
       [Cl.uint(1_000_000_000_000), Cl.uint(100_000), Cl.uint(2), Cl.uint(200_000)], wallet1);
-    simnet.callPublicFn("rho-core-v3", "accept-offer",
+    simnet.callPublicFn("rho-core-v4", "accept-offer",
       [Cl.uint(1), Cl.uint(10_000_000)], wallet2);
     realRate(0);
 
-    const { result } = simnet.callPublicFn("rho-core-v3", "settle-cycle",
+    const { result } = simnet.callPublicFn("rho-core-v4", "settle-cycle",
       [Cl.uint(1), Cl.uint(0)], deployer);
 
     // The settlement record says the variable party is owed 679,497.
@@ -35,7 +35,7 @@ describe("audit: fixed-party insolvency", () => {
       "variable-payment": Cl.uint(679_497),
     }));
 
-    const swap = simnet.callReadOnlyFn("rho-core-v3", "get-swap", [Cl.uint(1)], deployer).result;
+    const swap = simnet.callReadOnlyFn("rho-core-v4", "get-swap", [Cl.uint(1)], deployer).result;
     const f = (swap as any).value.value;
 
     // Fixed collateral is drained to zero...
@@ -52,17 +52,17 @@ describe("audit: fixed-party insolvency", () => {
     simnet.callPublicFn("mock-sbtc", "mint", [Cl.uint(100_000_000), Cl.principal(wallet1)], deployer);
     simnet.callPublicFn("mock-sbtc", "mint", [Cl.uint(100_000_000), Cl.principal(wallet2)], deployer);
 
-    simnet.callPublicFn("rho-core-v3", "post-offer",
+    simnet.callPublicFn("rho-core-v4", "post-offer",
       [Cl.uint(1_000_000_000_000), Cl.uint(100_000), Cl.uint(2), Cl.uint(200_000)], wallet1);
-    simnet.callPublicFn("rho-core-v3", "accept-offer",
+    simnet.callPublicFn("rho-core-v4", "accept-offer",
       [Cl.uint(1), Cl.uint(10_000_000)], wallet2);
     realRate(0);
     realRate(1);
 
-    simnet.callPublicFn("rho-core-v3", "settle-cycle", [Cl.uint(1), Cl.uint(0)], deployer);
-    simnet.callPublicFn("rho-core-v3", "settle-cycle", [Cl.uint(1), Cl.uint(1)], deployer);
+    simnet.callPublicFn("rho-core-v4", "settle-cycle", [Cl.uint(1), Cl.uint(0)], deployer);
+    simnet.callPublicFn("rho-core-v4", "settle-cycle", [Cl.uint(1), Cl.uint(1)], deployer);
 
-    const swap = simnet.callReadOnlyFn("rho-core-v3", "get-swap", [Cl.uint(1)], deployer).result;
+    const swap = simnet.callReadOnlyFn("rho-core-v4", "get-swap", [Cl.uint(1)], deployer).result;
     const f = (swap as any).value.value;
     // Second cycle transfers nothing at all - the variable party is owed
     // another 579,497 and receives zero.
@@ -74,7 +74,7 @@ describe("audit: fixed-party insolvency", () => {
 describe("audit: pilot cap enforcement", () => {
   it("rejects a fixed rate above the sanity bound", () => {
     simnet.callPublicFn("mock-sbtc", "mint", [Cl.uint(100_000_000), Cl.principal(wallet1)], deployer);
-    const { result } = simnet.callPublicFn("rho-core-v3", "post-offer",
+    const { result } = simnet.callPublicFn("rho-core-v4", "post-offer",
       [Cl.uint(1_000_000), Cl.uint(1_000_000_001), Cl.uint(1), Cl.uint(1_000_000)], wallet1);
     expect(result).toBeErr(Cl.uint(113)); // ERR-EXCEEDS-RATE-CAP
   });
@@ -85,14 +85,14 @@ describe("audit: pilot cap enforcement", () => {
 
     // Five swaps at the 1M STX per-swap cap fill the 5M STX protocol cap.
     for (let i = 1; i <= 5; i++) {
-      simnet.callPublicFn("rho-core-v3", "post-offer",
+      simnet.callPublicFn("rho-core-v4", "post-offer",
         [Cl.uint(1_000_000_000_000), Cl.uint(500_000), Cl.uint(1), Cl.uint(1_000_000)], wallet1);
-      simnet.callPublicFn("rho-core-v3", "accept-offer", [Cl.uint(i), Cl.uint(1_000_000)], wallet2);
+      simnet.callPublicFn("rho-core-v4", "accept-offer", [Cl.uint(i), Cl.uint(1_000_000)], wallet2);
     }
     // A sixth must be refused.
-    simnet.callPublicFn("rho-core-v3", "post-offer",
+    simnet.callPublicFn("rho-core-v4", "post-offer",
       [Cl.uint(1_000_000_000_000), Cl.uint(500_000), Cl.uint(1), Cl.uint(1_000_000)], wallet1);
-    const { result } = simnet.callPublicFn("rho-core-v3", "accept-offer",
+    const { result } = simnet.callPublicFn("rho-core-v4", "accept-offer",
       [Cl.uint(6), Cl.uint(1_000_000)], wallet2);
     expect(result).toBeErr(Cl.uint(114)); // ERR-EXCEEDS-TOTAL-NOTIONAL-CAP
   });

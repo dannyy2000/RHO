@@ -19,9 +19,9 @@ describe("liquidation path", () => {
     // 1M STX notional, fixed 600,000/cycle, 3 cycles. The variable party posts
     // 700,000 sats: enough for this cycle's 134,169, but far under the 110%
     // margin required against the two cycles still to run.
-    simnet.callPublicFn("rho-core-v3", "post-offer",
+    simnet.callPublicFn("rho-core-v4", "post-offer",
       [Cl.uint(1_000_000_000_000), Cl.uint(600_000), Cl.uint(3), Cl.uint(10_000_000)], wallet1);
-    simnet.callPublicFn("rho-core-v3", "accept-offer",
+    simnet.callPublicFn("rho-core-v4", "accept-offer",
       [Cl.uint(1), Cl.uint(700_000)], wallet2);
     // Real cycle-140 data: rate 465,831, below the fixed rate, so the variable
     // party owes the difference.
@@ -31,7 +31,7 @@ describe("liquidation path", () => {
 
   it("settles rather than aborting when the margin is breached", () => {
     openUnderMarginedSwap();
-    const { result } = simnet.callPublicFn("rho-core-v3", "settle-cycle",
+    const { result } = simnet.callPublicFn("rho-core-v4", "settle-cycle",
       [Cl.uint(1), Cl.uint(0)], deployer);
 
     // fixed owed 600,000, actual 465,831 -> variable pays 134,169.
@@ -43,9 +43,9 @@ describe("liquidation path", () => {
 
   it("marks the swap liquidated and returns both balances", () => {
     openUnderMarginedSwap();
-    simnet.callPublicFn("rho-core-v3", "settle-cycle", [Cl.uint(1), Cl.uint(0)], deployer);
+    simnet.callPublicFn("rho-core-v4", "settle-cycle", [Cl.uint(1), Cl.uint(0)], deployer);
 
-    const swap = simnet.callReadOnlyFn("rho-core-v3", "get-swap", [Cl.uint(1)], deployer).result;
+    const swap = simnet.callReadOnlyFn("rho-core-v4", "get-swap", [Cl.uint(1)], deployer).result;
     const f = (swap as any).value.value;
     expect(f["status"]).toBeUint(2);              // liquidated
     expect(f["fixed-collateral"]).toBeUint(0);    // paid out
@@ -61,10 +61,10 @@ describe("liquidation path", () => {
 
   it("releases pilot capacity exactly once on liquidation", () => {
     openUnderMarginedSwap();
-    simnet.callPublicFn("rho-core-v3", "settle-cycle", [Cl.uint(1), Cl.uint(0)], deployer);
+    simnet.callPublicFn("rho-core-v4", "settle-cycle", [Cl.uint(1), Cl.uint(0)], deployer);
 
     // A double release underflows here instead of returning full headroom.
-    const util = simnet.callReadOnlyFn("rho-core-v3", "get-pilot-utilisation", [], deployer).result;
+    const util = simnet.callReadOnlyFn("rho-core-v4", "get-pilot-utilisation", [], deployer).result;
     expect(util).toBeTuple({
       "active-notional-ustx": Cl.uint(0),
       "active-swap-count": Cl.uint(0),
