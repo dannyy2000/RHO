@@ -16,7 +16,7 @@ const faqs = [
   },
   {
     q: "Does that actually cost stackers anything today?",
-    a: "Yes, and it is measurable. Miners are currently paying roughly 3 BTC per cycle, about 75 BTC a year. Genesis Bond has around 250 BTC locked at a guaranteed 3%, which is about 7.5 BTC a year claimed ahead of stackers. After the reserve's share, STX-only stackers receive roughly 57 BTC a year instead of 75 — around a 23% reduction. That gap widens every time the bond pool grows.",
+    a: "Yes, and it is measurable. Miners are currently paying roughly 3 BTC per cycle, about 75 BTC a year. Genesis Bond has around 250 BTC locked at a guaranteed 3%, which is about 7.5 BTC a year claimed ahead of stackers. After the reserve's 15% share, STX-only stackers receive roughly 57 BTC a year instead of 75 — around a 23% reduction. About 15 points of that is the reserve and 8.5 points is the bond claim, and only the bond portion grows as more BTC is locked. At roughly 2,500 BTC bonded, the stacker share reaches zero.",
   },
   {
     q: "What is an interest rate swap?",
@@ -82,7 +82,7 @@ export default function HomePage() {
             },
             {
               label: "The risk just changed",
-              body: "Since PoX-5, Genesis Bond holders are paid a guaranteed rate before STX-only stackers, who now receive only what remains. At roughly 250 BTC bonded that is already about a 23% cut to stacker yield — and it grows as the bond pool does.",
+              body: "Since PoX-5, Genesis Bond holders are paid a guaranteed rate before STX-only stackers, who now receive only what remains. At roughly 250 BTC bonded, stacker yield is already down about 23% — and unlike the reserve's fixed share, the bond portion grows with every BTC added.",
             },
             {
               label: "Nobody built this yet",

@@ -137,6 +137,7 @@ Both legs were signed by the same principal, so this exercises contract behaviou
 - [Deployed Contracts](#deployed-contracts--stacks-testnet)
 - [Background — What is PoX yield?](#background--what-is-pox-yield)
 - [The Problem](#the-problem)
+- [Research: PoX-5 subordination analysis](./RESEARCH.md)
 - [The Solution](#the-solution)
 - [How the Rate is Calculated](#how-the-rate-is-calculated)
 - [Mechanism Walkthrough](#mechanism-walkthrough)
@@ -185,6 +186,8 @@ If miner revenue dips in a cycle, Tranche 1 still receives its guaranteed rate �
 Nobody in Tranche 2 has a way to hedge this. You cannot underwrite a treasury strategy, plan around a capital commitment, or offer STX-only stacking as a predictable product to anyone else — because the rate you actually receive now depends on both miner competition *and* how large the bond pool is that cycle, and no product exists to separate that risk from your position.
 
 **There is currently no hedging product for Tranche 2 stackers on any Bitcoin Layer 2.** This problem is roughly two months old — it did not exist before PoX-5 activated on July 30, 2026 — which is a direct answer to "why doesn't this already exist."
+
+**The scale, quantified.** Miner revenue is running at roughly 3 BTC per cycle (~75 BTC/year), down 85–90% from cycles 95–109. Against that pot, STX-only stackers now receive about 57.4 BTC/year instead of 75 — a **23.5% reduction**, of which 15 points come from the reserve fund's share and 8.5 points from Genesis Bond's senior claim at ~250 BTC bonded. Only the second part scales with the bond pool, and it scales hard: **Tranche 2 reaches zero at ~2,500 BTC bonded, below the programme's own 3,000 BTC capacity target.** Full working, sources and caveats in [RESEARCH.md](./RESEARCH.md).
 
 Ethereum solved the equivalent problem for its native yield (ETH staking rate) through protocols like Pendle Finance, which now manages billions in TVL hedging validator yield variance. Stacks now has an analogous — arguably sharper, since it's a two-sided tranche structure rather than a single floating rate — problem, and no derivative layer on top of it.
 
