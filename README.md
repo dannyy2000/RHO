@@ -3,7 +3,7 @@
 > The hedge for Stacks' junior tranche — fixed-rate protection for STX-only stackers against the yield volatility PoX-5's Bitcoin Staking bonds created.
 
 [![Clarinet](https://img.shields.io/badge/Clarinet-3.11.0-orange)](https://github.com/hirosystems/clarinet)
-[![Tests](https://img.shields.io/badge/tests-22%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-26%20passing-brightgreen)](#testing)
 [![Clarity](https://img.shields.io/badge/Clarity-v2-blue)](https://docs.stacks.co/clarity)
 [![Network](https://img.shields.io/badge/network-Stacks%20Testnet-purple)](https://explorer.hiro.so)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -147,6 +147,7 @@ Both legs were signed by the same principal, so this exercises contract behaviou
 - [Development Setup](#development-setup)
 - [Testing](#testing)
 - [Deployment](#deployment)
+- [Known Limitations](#known-limitations)
 - [Security Considerations](#security-considerations)
 - [Roadmap](#roadmap)
 - [Why Stacks](#why-stacks)
@@ -263,7 +264,7 @@ rate                = (tranche_2_pool_sats × 1e12) ÷ total_ustx_stacked_tranch
 
 where `tranche_1_obligation_sats` is the guaranteed payout owed to active protocol bonds that cycle (bonded BTC × each bond's target rate).
 
-**The rate unit is sats per 1,000,000 STX stacked, per cycle.** The `1e12` scalar is load-bearing, not cosmetic: real PoX yield is roughly 0.5 sats per STX per cycle, so a per-1-STX scalar truncates every real cycle to zero under Clarity's integer division. See [Why there is a v2](#why-there-is-a-v2).
+**The rate unit is sats per 1,000,000 STX stacked, per cycle.** The `1e12` scalar is load-bearing, not cosmetic: real PoX yield is roughly 0.5 sats per STX per cycle, so a per-1-STX scalar truncates every real cycle to zero under Clarity's integer division. See [Why there is a v2](#version-history--two-defects-found-and-fixed).
 
 Worked against live cycle-142 figures — miners paid 3.83 BTC, about 0.3 BTC owed to Tranche 1, 441,576,024 STX stacked:
 
@@ -655,8 +656,8 @@ npm test
 
 Expected output:
 ```
-Test Files  6 passed (6)
-     Tests  22 passed (22)
+Test Files  7 passed (7)
+     Tests  26 passed (26)
 ```
 
 ### Start the frontend
@@ -704,6 +705,9 @@ The test suite covers the full swap lifecycle and all error paths. Tests run aga
 | Margin breach settles | `liquidation.test.ts` | An under-margined swap settles rather than aborting — the v2 defect |
 | Liquidation pays out | `liquidation.test.ts` | Swap marks liquidated, both parties receive their correct balances |
 | Capacity released once | `liquidation.test.ts` | Liquidation restores full headroom instead of underflowing |
+| Fixed-party insolvency | `audit.test.ts` | Documents the uncollateralised shortfall the variable party absorbs — see [Known Limitations](#known-limitations) |
+| Rate cap enforced | `audit.test.ts` | Rate above the sanity bound returns `ERR-EXCEEDS-RATE-CAP` |
+| Protocol notional cap | `audit.test.ts` | A sixth swap past the 5M STX ceiling returns `ERR-EXCEEDS-TOTAL-NOTIONAL-CAP` |
 | Waterfall rate derivation | `pox-rate-oracle.test.ts` | Tranche 2 rate = (miner revenue − Tranche 1 obligation) × 85%, per PoX-5 |
 | Tranche 1 subtracted first | `pox-rate-oracle.test.ts` | Same revenue with zero bonds yields a higher Tranche 2 rate — the gap Genesis Bond growth takes |
 | Obligation bound | `pox-rate-oracle.test.ts` | Obligation exceeding miner revenue returns `ERR-OBLIGATION-EXCEEDS-REVENUE` rather than underflowing |
@@ -780,6 +784,45 @@ Rho's pilot runs inside hard bounds that are **enforced in the contract as const
 **Capacity is released, not consumed permanently.** When a swap closes or is liquidated, its notional and slot return to the available pool. Both exit paths are covered by tests, because a counter that only increments would silently brick the protocol after 25 swaps had ever existed.
 
 **Live utilisation is publicly readable.** Anyone — a reviewer, the frontend, a counterparty — can call `get-pilot-caps` and `get-pilot-utilisation` to see the limits and exactly how full the pilot is, without trusting a dashboard or a claim in this README.
+
+---
+
+## Known Limitations
+
+Documented because a reader will find them anyway, and because they shape what the pilot caps are for.
+
+### Margining is one-sided
+
+The maintenance margin and automatic liquidation protect the **fixed** party only. The variable party has no equivalent protection, and the asymmetry runs the wrong way relative to risk:
+
+| | Maximum obligation | Margin requirement |
+|---|---|---|
+| Variable party | **Bounded** — at most the fixed rate, when the actual rate is zero | 110% of remaining obligation, liquidated on breach |
+| Fixed party | **Unbounded** — owes `actual − fixed`, and the actual rate has no ceiling | None |
+
+When the actual rate rises above the fixed rate by more than the fixed party's collateral covers, `settle-cycle` pays out whatever collateral exists, truncates the rest, and **the swap continues**. There is no liquidation and no margin call on that side. The variable party absorbs the shortfall.
+
+`tests/audit.test.ts` demonstrates this concretely: a fixed party holding 200,000 sats against a net obligation of 579,497 pays 200,000, the variable party absorbs a 379,497 shortfall, the swap stays active, and the next cycle transfers nothing at all.
+
+This is inherent to collateralising an obligation with no upper bound — you cannot fully margin it in advance. Real interest-rate swap markets handle it with variation margin posted by both sides as rates move.
+
+**Today's mitigation is disclosure, not enforcement.** A fixed party's posted collateral is visible via `get-offer` before anyone accepts, so a counterparty can assess coverage. The contract does not require it to be adequate. Two-sided variation margin is M2 work.
+
+### The oracle is trusted in Phase 1
+
+Cycle rates are submitted by the contract deployer. The raw inputs are stored on chain so the derived rate is independently recomputable, but an admin could submit inputs that are internally consistent and still wrong. Phase 2 replaces this with Bitcoin proof verification.
+
+### Tranche 1 obligations are not read from chain
+
+The Genesis Bond obligation fed to the oracle is computed off chain. SIP-045 confirms the PoX-5 contract exposes the reserve balance, but the published spec does not document public read functions for bond capacity or target rate. Until that is resolved this input is asserted rather than verified.
+
+### Testing used a single principal
+
+Both legs of the on-chain runs were signed by the same address. This exercises contract behaviour, not counterparty dynamics, price discovery, or adversarial participants.
+
+### Collateral is mock sBTC
+
+Testnet uses a freely mintable `mock-sbtc`. Mainnet requires real sBTC, and that substitution is untested.
 
 ---
 
