@@ -1,19 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useWallet } from "@/components/WalletProvider";
 import { NETWORK, CONTRACTS } from "@/lib/stacks";
+import { fetchOpenOffers, type Offer } from "@/lib/contract";
 import FAQAccordion from "@/components/FAQAccordion";
 
-const MOCK_OFFERS = [
-  { id: 1, fixedParty: "ST1SJ3...YPD5", notionalUstx: 1_000_000_000_000, fixedRate: 500_000, durationCycles: 3, collateralSats: 5_000_000, postedAt: "Cycle 84" },
-  { id: 2, fixedParty: "ST2CY5...K9AG", notionalUstx: 500_000_000_000, fixedRate: 620_000, durationCycles: 6, collateralSats: 12_000_000, postedAt: "Cycle 84" },
-  { id: 3, fixedParty: "ST3NBR...H2T", notionalUstx: 250_000_000_000, fixedRate: 700_000, durationCycles: 1, collateralSats: 2_000_000, postedAt: "Cycle 85" },
-];
+function shortAddr(a: string) {
+  return a.length > 14 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
+}
 
 function fmt(n: number) { return n.toLocaleString(); }
 
-function AcceptModal({ offer, onClose }: { offer: (typeof MOCK_OFFERS)[0]; onClose: () => void }) {
+function AcceptModal({ offer, onClose }: { offer: Offer; onClose: () => void }) {
   const { connected, connect } = useWallet();
   const [collateral, setCollateral] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -149,7 +148,17 @@ const faqs = [
 ];
 
 export default function MarketPage() {
-  const [selected, setSelected] = useState<(typeof MOCK_OFFERS)[0] | null>(null);
+  const [selected, setSelected] = useState<Offer | null>(null);
+  const [offers, setOffers] = useState<Offer[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    fetchOpenOffers()
+      .then((o) => { if (live) setOffers(o); })
+      .catch((e) => { if (live) setLoadError(String(e?.message ?? e)); });
+    return () => { live = false; };
+  }, []);
 
   return (
     <div className="bg-white min-h-screen">
@@ -196,10 +205,21 @@ export default function MarketPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {MOCK_OFFERS.map((offer) => (
+              {offers === null && !loadError && (
+                <tr><td colSpan={7} className="px-5 py-10 text-center text-sm text-slate-400">Loading offers from {CONTRACTS.core}…</td></tr>
+              )}
+              {loadError && (
+                <tr><td colSpan={7} className="px-5 py-10 text-center text-sm text-red-600">Could not reach the contract: {loadError}</td></tr>
+              )}
+              {offers !== null && offers.length === 0 && (
+                <tr><td colSpan={7} className="px-5 py-10 text-center text-sm text-slate-400">
+                  No open offers on chain right now. Post one from the Create page and it will appear here.
+                </td></tr>
+              )}
+              {(offers ?? []).map((offer) => (
                 <tr key={offer.id} className="hover:bg-slate-50 transition-colors group">
                   <td className="px-5 py-4 font-mono text-slate-400 text-xs">{offer.id}</td>
-                  <td className="px-5 py-4 font-mono text-slate-600 text-xs">{offer.fixedParty}</td>
+                  <td className="px-5 py-4 font-mono text-slate-600 text-xs">{shortAddr(offer.fixedParty)}</td>
                   <td className="px-5 py-4 text-right font-mono text-slate-800">{fmt(offer.notionalUstx)} <span className="text-slate-400 text-xs">uSTX</span></td>
                   <td className="px-5 py-4 text-right">
                     <span className="bg-amber-50 text-amber-700 font-mono font-bold text-xs px-2.5 py-1 rounded-full border border-amber-200">

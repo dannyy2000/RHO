@@ -1,46 +1,12 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useWallet } from "@/components/WalletProvider";
+import { CONTRACTS } from "@/lib/stacks";
+import { fetchSwaps, fetchOpenOffers, fetchSettlements,
+         type Swap, type Offer, type Settlement } from "@/lib/contract";
 
-const MOCK_POSITIONS = [
-  {
-    swapId: 1,
-    role: "Fixed",
-    notionalUstx: 1_000_000_000_000,
-    fixedRate: 500_000,
-    durationCycles: 3,
-    cyclesSettled: 1,
-    startCycle: 82,
-    fixedCollateral: 3_680_000,
-    variableCollateral: 1_920_000,
-    status: "Active",
-    pnl: +20_000,
-  },
-];
-
-const MOCK_OFFERS = [
-  {
-    offerId: 2,
-    notionalUstx: 250_000_000_000,
-    fixedRate: 700_000,
-    durationCycles: 1,
-    collateralSats: 2_000_000,
-    status: "Open",
-    postedAt: "Cycle 85",
-  },
-];
-
-const MOCK_SETTLEMENTS = [
-  {
-    swapId: 1,
-    cycle: 82,
-    fixedPayment: 800,
-    variablePayment: 900,
-    netWinner: "Variable",
-    net: 100,
-    settledAt: "Block 890,234",
-  },
-];
+const STATUS = ["Active", "Completed", "Liquidated"] as const;
 
 function fmt(n: number) {
   return n.toLocaleString();
@@ -78,6 +44,34 @@ function ConnectPrompt({ onConnect }: { onConnect: () => void }) {
 
 export default function DashboardPage() {
   const { connected, address, connect } = useWallet();
+  const [swaps, setSwaps] = useState<Swap[] | null>(null);
+  const [offers, setOffers] = useState<Offer[] | null>(null);
+  const [settlements, setSettlements] = useState<Settlement[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!connected || !address) return;
+    let live = true;
+    (async () => {
+      try {
+        const [allSwaps, allOffers] = await Promise.all([fetchSwaps(), fetchOpenOffers()]);
+        const mine = allSwaps.filter(
+          (w) => w.fixedParty === address || w.variableParty === address);
+        if (!live) return;
+        setSwaps(mine);
+        setOffers(allOffers.filter((o) => o.fixedParty === address));
+        const rows = await Promise.all(mine.map(fetchSettlements));
+        if (live) setSettlements(rows.flat().sort((a, b) => b.cycle - a.cycle));
+      } catch (e: any) {
+        if (live) setLoadError(String(e?.message ?? e));
+      }
+    })();
+    return () => { live = false; };
+  }, [connected, address]);
+
+  const activeSwaps = (swaps ?? []).filter((w) => w.status === 0);
+  const totalNotional = (swaps ?? []).reduce((t, w) => t + w.notionalUstx, 0);
+  const loading = connected && swaps === null && !loadError;
 
   if (!connected) {
     return (
@@ -101,17 +95,15 @@ export default function DashboardPage() {
       <div className="grid sm:grid-cols-3 gap-4">
         <div className="border border-slate-200 rounded-lg p-5">
           <p className="text-xs text-slate-400 uppercase tracking-widest font-semibold mb-1">Active swaps</p>
-          <p className="text-3xl font-semibold text-slate-900">{MOCK_POSITIONS.length}</p>
+          <p className="text-3xl font-semibold text-slate-900">{activeSwaps.length}</p>
         </div>
         <div className="border border-slate-200 rounded-lg p-5">
           <p className="text-xs text-slate-400 uppercase tracking-widest font-semibold mb-1">Open offers</p>
-          <p className="text-3xl font-semibold text-slate-900">{MOCK_OFFERS.length}</p>
+          <p className="text-3xl font-semibold text-slate-900">{(offers ?? []).length}</p>
         </div>
         <div className="border border-slate-200 rounded-lg p-5">
-          <p className="text-xs text-slate-400 uppercase tracking-widest font-semibold mb-1">Cumulative P&L</p>
-          <p className={`text-3xl font-semibold ${MOCK_POSITIONS[0].pnl >= 0 ? "text-green-600" : "text-red-500"}`}>
-            {MOCK_POSITIONS[0].pnl >= 0 ? "+" : ""}{fmt(MOCK_POSITIONS[0].pnl)} sats
-          </p>
+          <p className="text-xs text-slate-400 uppercase tracking-widest font-semibold mb-1">Total notional</p>
+          <p className="text-3xl font-semibold text-slate-900">{fmt(totalNotional)}<span className="text-base text-slate-400 ml-1">uSTX</span></p>
         </div>
       </div>
 
@@ -131,12 +123,30 @@ export default function DashboardPage() {
                 <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Rate</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Progress</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Your collateral</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">P&L</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {MOCK_POSITIONS.map((pos) => (
+              {loading && (
+                <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-400">Reading {CONTRACTS.core}…</td></tr>
+              )}
+              {loadError && (
+                <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-red-600">Could not reach the contract: {loadError}</td></tr>
+              )}
+              {swaps !== null && swaps.length === 0 && (
+                <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-400">No positions for this address on chain yet.</td></tr>
+              )}
+              {(swaps ?? []).map((w) => {
+                const role = w.fixedParty === address ? "Fixed" : "Variable";
+                const pos = {
+                  swapId: w.id, role,
+                  notionalUstx: w.notionalUstx, fixedRate: w.fixedRate,
+                  durationCycles: w.durationCycles, cyclesSettled: w.cyclesSettled,
+                  fixedCollateral: w.fixedCollateral, variableCollateral: w.variableCollateral,
+                  status: STATUS[w.status] ?? "Unknown",
+                };
+                return (
                 <tr key={pos.swapId} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3.5 font-mono text-slate-500">#{pos.swapId}</td>
                   <td className="px-4 py-3.5">
@@ -162,21 +172,24 @@ export default function DashboardPage() {
                     {fmt(pos.role === "Fixed" ? pos.fixedCollateral : pos.variableCollateral)} sats
                   </td>
                   <td className="px-4 py-3.5 text-right">
-                    <span className={`font-mono font-semibold text-sm ${pos.pnl >= 0 ? "text-green-600" : "text-red-500"}`}>
-                      {pos.pnl >= 0 ? "+" : ""}{fmt(pos.pnl)}
-                    </span>
+                    <Badge
+                      text={pos.status}
+                      color={pos.status === "Liquidated" ? "amber" : "slate"}
+                    />
                   </td>
                   <td className="px-4 py-3.5 text-right">
-                    {pos.cyclesSettled === pos.durationCycles ? (
+                    {pos.status === "Active" && pos.cyclesSettled === pos.durationCycles ? (
                       <button className="text-xs bg-green-600 text-white font-medium px-3 py-1.5 rounded hover:bg-green-700 transition-colors">
                         Close swap
                       </button>
                     ) : (
-                      <span className="text-xs text-slate-400">Settling…</span>
+                      <span className="text-xs text-slate-400">
+                        {pos.status === "Active" ? "Settling…" : "—"}
+                      </span>
                     )}
                   </td>
                 </tr>
-              ))}
+              );})}
             </tbody>
           </table>
         </div>
@@ -205,7 +218,13 @@ export default function DashboardPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {MOCK_OFFERS.map((offer) => (
+              {offers !== null && offers.length === 0 && (
+                <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-400">No open offers posted from this address.</td></tr>
+              )}
+              {(offers ?? []).map((o) => {
+                const offer = { offerId: o.id, notionalUstx: o.notionalUstx, fixedRate: o.fixedRate,
+                                durationCycles: o.durationCycles, collateralSats: o.collateralSats };
+                return (
                 <tr key={offer.offerId} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3.5 font-mono text-slate-500">#{offer.offerId}</td>
                   <td className="px-4 py-3.5 text-right font-mono text-slate-800">{fmt(offer.notionalUstx)} uSTX</td>
@@ -218,14 +237,14 @@ export default function DashboardPage() {
                     {offer.durationCycles} cycle{offer.durationCycles > 1 ? "s" : ""}
                   </td>
                   <td className="px-4 py-3.5 text-right font-mono text-slate-800">{fmt(offer.collateralSats)} sats</td>
-                  <td className="px-4 py-3.5 text-slate-500">{offer.postedAt}</td>
+                  <td className="px-4 py-3.5 text-slate-500">Open</td>
                   <td className="px-4 py-3.5 text-right">
                     <button className="text-xs text-red-500 hover:text-red-700 font-medium transition-colors">
                       Cancel &amp; reclaim
                     </button>
                   </td>
                 </tr>
-              ))}
+              );})}
             </tbody>
           </table>
         </div>
@@ -250,7 +269,16 @@ export default function DashboardPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {MOCK_SETTLEMENTS.map((s, i) => (
+              {settlements.length === 0 && (
+                <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-400">No settled cycles yet.</td></tr>
+              )}
+              {settlements.map((r, i) => {
+                const net = Math.abs(r.fixedPayment - r.variablePayment);
+                const s = { swapId: r.swapId, cycle: r.cycle,
+                            fixedPayment: r.fixedPayment, variablePayment: r.variablePayment,
+                            netWinner: r.variablePayment >= r.fixedPayment ? "Variable" : "Fixed",
+                            net, settledAt: `Burn block ${fmt(r.settledAt)}` };
+                return (
                 <tr key={i} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3.5 font-mono text-slate-500">#{s.swapId}</td>
                   <td className="px-4 py-3.5 text-right font-mono text-slate-600">{s.cycle}</td>
@@ -263,7 +291,7 @@ export default function DashboardPage() {
                   </td>
                   <td className="px-4 py-3.5 font-mono text-xs text-slate-400">{s.settledAt}</td>
                 </tr>
-              ))}
+              );})}
             </tbody>
           </table>
         </div>

@@ -1,0 +1,35 @@
+---
+id: 0
+name: Seed open offers on rho-core-v4
+network: testnet
+stacks-node: "https://api.testnet.hiro.so"
+bitcoin-node: "http://blockstack:blockstacksystem@bitcoind.testnet.stacks.co:18332"
+plan:
+  batches:
+    # Three open offers with terms bracketing the observed PoX-5 range
+    # (cycles 140-142 settled at 465,831 / 515,879 / 679,497). Left unaccepted
+    # so they stay visible as open offers on the market page.
+    - id: 0
+      transactions:
+        # 1M STX notional at the per-swap pilot cap, below-market fixed rate
+        - contract-call:
+            contract-id: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v4
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            method: post-offer
+            parameters: [u1000000000000, u500000, u3, u2000000]
+            cost: 120000
+        # 500k STX notional, mid-range rate, longer duration
+        - contract-call:
+            contract-id: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v4
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            method: post-offer
+            parameters: [u500000000000, u620000, u6, u2500000]
+            cost: 120000
+        # 250k STX notional, above-market rate, short duration
+        - contract-call:
+            contract-id: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v4
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            method: post-offer
+            parameters: [u250000000000, u700000, u2, u1000000]
+            cost: 120000
+      epoch: "2.1"
