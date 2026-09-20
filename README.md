@@ -275,7 +275,7 @@ rate                = (tranche_2_pool_sats × 1e12) ÷ total_ustx_stacked_tranch
 
 where `tranche_1_obligation_sats` is the guaranteed payout owed to active protocol bonds that cycle (bonded BTC × each bond's target rate).
 
-**The rate unit is sats per 1,000,000 STX stacked, per cycle.** The `1e12` scalar is load-bearing, not cosmetic: real PoX yield is roughly 0.5 sats per STX per cycle, so a per-1-STX scalar truncates every real cycle to zero under Clarity's integer division. See [Why there is a v2](#version-history--two-defects-found-and-fixed).
+**The rate unit is sats per 1,000,000 STX stacked, per cycle.** The `1e12` scalar is load-bearing, not cosmetic: real PoX yield is roughly 0.5 sats per STX per cycle, so a per-1-STX scalar truncates every real cycle to zero under Clarity's integer division. See [Version history](#version-history--three-defects-found-and-fixed).
 
 Worked against live cycle-142 figures — miners paid 3.83 BTC, about 0.3 BTC owed to Tranche 1, 441,576,024 STX stacked:
 
@@ -447,7 +447,9 @@ contracts/
 
 ### `sip-010-trait.clar`
 
-Defines the standard SIP-010 fungible token interface for Stacks. All token interactions in Rho go through this trait, making the collateral token swappable — replace `mock-sbtc` with real sBTC for mainnet by updating a single contract address.
+Defines the standard SIP-010 fungible token interface for Stacks. `mock-sbtc` implements it, so any SIP-010 token can stand in during testing.
+
+**Note:** `rho-core` calls `.mock-sbtc` directly rather than dispatching through this trait. That is deliberate — a hardcoded token cannot be swapped for a malicious one by a caller — but it does mean changing the collateral asset is a source edit and redeploy, not a configuration change. See [Mainnet](#mainnet).
 
 **Trait functions:**
 
@@ -467,7 +469,7 @@ Defines the standard SIP-010 fungible token interface for Stacks. All token inte
 
 A SIP-010 compliant fungible token for testnet use. Freely mintable — anyone can call `mint` to get tokens for testing without needing the sBTC bridge.
 
-**Replace with** `SM3VDXK3WZZSA84xxFkqHC4MZafEMoz4G9DLMZS.sbtc-token` on mainnet.
+**Replace with** `'SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token` on mainnet — verified to resolve and expose SIP-010. See [Mainnet](#mainnet) for the full change list.
 
 | Function | Access | Description |
 |----------|--------|-------------|
@@ -765,16 +767,20 @@ Update the frontend's `.env.local` with the new addresses, then deploy the front
 
 ### Mainnet
 
-Replace `mock-sbtc` with real sBTC:
+Mainnet is **not yet deployed**. Three source changes are required, and all three are blocking:
+
+**1. Swap the collateral token.** `rho-core.clar` references `.mock-sbtc` in seven places. Replace each with the real sBTC token:
 
 ```clarity
-;; In rho-core.clar, replace all references to:
-.mock-sbtc
-;; with:
-SM3VDXK3WZZSA84xxFkqHC4MZafEMoz4G9DLMZS.sbtc-token
+;; replace every .mock-sbtc reference with:
+'SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token
 ```
 
-Update the oracle contract owner to a multisig before mainnet deployment.
+> Verified 2026-09-20: that principal resolves on mainnet and exposes the SIP-010 interface. An earlier revision of this README carried a malformed address that does not exist on chain; anyone who had followed it would have deployed a contract that could not move collateral.
+
+**2. Swap the PoX boot contract.** `get-current-pox-cycle` reads `'ST000000000000000000002AMW42H.pox-5`, which is the testnet principal. Mainnet is `'SP000000000000000000002Q6VF98.pox-5`. The line is commented in source.
+
+**3. Deploy the oracle from the intended key.** `pox-rate-oracle` fixes its owner to `tx-sender` at deployment and exposes **no** function to change it — so the owner must be correct at deploy time, not corrected afterwards. Deploy from a multisig if a multisig is wanted. See [Known Limitations](#known-limitations).
 
 ---
 
@@ -826,6 +832,12 @@ Cycle rates are submitted by the contract deployer. The raw inputs are stored on
 ### Tranche 1 obligations are not read from chain
 
 The Genesis Bond obligation fed to the oracle is computed off chain. SIP-045 confirms the PoX-5 contract exposes the reserve balance, but the published spec does not document public read functions for bond capacity or target rate. Until that is resolved this input is asserted rather than verified.
+
+### The oracle owner cannot be changed
+
+`pox-rate-oracle` sets `contract-owner` to `tx-sender` at deployment and provides no function to transfer it. If that key is lost, no further cycle rates can ever be submitted. Every active swap then becomes unsettleable, and because `close-swap` requires all cycles settled, collateral in those swaps would be stranded.
+
+There is no recovery path in the current contract. The mitigation is operational: deploy from a key with a custody model appropriate to the value at risk, which the pilot caps deliberately bound. An owner-transfer function is M2 work.
 
 ### Testing used a single principal
 
