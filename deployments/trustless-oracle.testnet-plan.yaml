@@ -1,0 +1,18 @@
+---
+id: 0
+name: Deploy trustless PoX-5 Tranche 2 oracle
+network: testnet
+stacks-node: "https://api.testnet.hiro.so"
+bitcoin-node: "http://blockstack:blockstacksystem@bitcoind.testnet.stacks.co:18332"
+plan:
+  batches:
+    - id: 0
+      transactions:
+        - contract-publish:
+            contract-name: pox-rate-oracle-trustless
+            expected-sender: ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7
+            cost: 120000
+            path: contracts/pox-rate-oracle-trustless.clar
+            anchor-block-only: true
+            clarity-version: 2
+      epoch: "2.1"
