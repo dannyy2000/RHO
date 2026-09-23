@@ -284,7 +284,19 @@ pool = (383,000,000 - 30,000,000) × 0.85       = 300,050,000 sats
 rate = 300,050,000 × 1e12 ÷ 441,576,024,000,000 = 679,497
 ```
 
-**Open technical question — flagged, not yet resolved.** SIP-045 confirms the PoX-5 contract exposes the reserve fund balance on-chain, but the published spec does not document public read-only functions for bond capacity, target rate, or per-cycle Tranche 1 obligations. Resolving this against the deployed PoX-5 reference contract is active, in-progress work — see [Roadmap, Phase 1](#phase-1--bilateral-grant-scope-now). This is a deliberate, disclosed gap rather than an assumption baked silently into the contract: Phase 1 sources it the same way PoX-4 data was sourced originally (admin-submitted, cross-checked against what's publicly verifiable), and Phase 2 moves to fully trustless sourcing once the necessary read functions are confirmed.
+**Resolved 2026-09-23 — correcting an earlier claim in this README.** This section previously stated that the published spec does not document read functions for bond capacity or target rate, and that trustless sourcing was therefore blocked. That was wrong. It was written from the SIP text rather than from the deployed contract. Querying `pox-5` directly, the required reads are live:
+
+| Function | Returns |
+|---|---|
+| `get-protocol-bond(bond-index)` | tuple including `target-rate` |
+| `get-total-sbtc-staked-for-bond(bond-index)` | bonded sBTC for that bond period |
+| `is-bond-active-at-height(bond-index, height)` | whether a bond counts at a given height |
+| `assert-all-active-bonds-included(bond-periods, height)` | has PoX-5 itself confirm no active bond was omitted |
+| `get-reserve-balance()` | current reserve balance |
+
+Tranche 1's obligation is therefore `Σ(bonded sBTC × target-rate)` across active bonds, computable entirely on chain. `assert-all-active-bonds-included` is what makes this trustless rather than merely automated: without it a submitter could omit bonds to understate the senior claim and inflate the residual; with it, the chain rejects an incomplete set.
+
+The admin-submitted oracle currently deployed predates this finding. Replacing it is the first deliverable of the current grant scope.
 
 The previous version of this oracle computed a naive pro-rata share across *all* stacked STX — the correct formula before PoX-5, and no longer the correct formula after it. That calculation is being replaced, not patched, precisely because it silently overstates Tranche 2 yield by the full size of the Tranche 1 obligation.
 
@@ -829,9 +841,11 @@ This is inherent to collateralising an obligation with no upper bound — you ca
 
 Cycle rates are submitted by the contract deployer. The raw inputs are stored on chain so the derived rate is independently recomputable, but an admin could submit inputs that are internally consistent and still wrong. Phase 2 replaces this with Bitcoin proof verification.
 
-### Tranche 1 obligations are not read from chain
+### Tranche 1 obligations are not yet read from chain
 
-The Genesis Bond obligation fed to the oracle is computed off chain. SIP-045 confirms the PoX-5 contract exposes the reserve balance, but the published spec does not document public read functions for bond capacity or target rate. Until that is resolved this input is asserted rather than verified.
+The Genesis Bond obligation fed to the deployed oracle is still computed off chain and submitted by the contract owner, so this input is currently asserted rather than verified.
+
+This is an implementation gap, not a protocol one. PoX-5 does expose the necessary reads — see [How the Rate is Calculated](#how-the-rate-is-calculated) for the specific functions and the completeness check that makes trustless sourcing possible. An earlier version of this document claimed otherwise; that claim was made from the SIP text rather than the deployed contract and was incorrect.
 
 ### The oracle owner cannot be changed
 
@@ -941,13 +955,32 @@ This is Rho's response to the Q2 feedback, applying to the **Stacks Endowment Q3
 
 ### Proposed milestones
 
-| Milestone | Target | Deliverable |
-|-----------|--------|-------------|
-| M1 | Complete | Oracle rebuilt on the PoX-5 waterfall, capped pilot enforced in-contract, contracts deployed and verified, full lifecycle simulated on chain against real cycle data. |
-| M2 | ~6 weeks | Trustless oracle sourcing: replace admin submission with verified reads of Tranche 1 obligations, resolving the open dependency. Second-principal simulation exercising real counterparty dynamics and a liquidation path. |
-| M3 | ~12 weeks | Mainnet deployment with real sBTC under the same caps. End-to-end swaps hedging live Tranche 2 exposure, with published results including anything that did not work. |
+$8,000 requested, split 20/30/50. Every milestone covers forward work; the testnet deployment and evidence above are supporting evidence, not funded deliverables.
 
-Funding amounts to be proposed through the Q3 application portal; the Q3 2026 announcement does not disclose fixed track amounts in advance.
+Structured around Rho's mechanics rather than a generic launch sequence. A swap settles per PoX cycle — roughly two weeks on mainnet — and needs two parties wanting opposite exposure, so transaction counts measure progress poorly. Completed settlement cycles and a two-sided book are the real tests.
+
+**M1 — Make it safe to custody collateral — 20% / $1,600**
+- Two-sided variation margining, closing the unbounded fixed-party obligation in [Known Limitations](#known-limitations)
+- Trustless oracle sourcing Tranche 1 obligations directly from PoX-5
+- Oracle-owner transfer and recovery path
+- Fuzzing targeted at settlement, liquidation and margin math
+- Peer review of those paths, with named reviewers and published notes
+- At least one non-deployer wallet transacting on testnet
+- Release candidate ready for mainnet
+
+**M2 — Mainnet, real counterparty, one complete cycle — 30% / $2,400**
+- Verified contracts on mainnet, production frontend live against them
+- At least one swap opened with a non-deployer counterparty
+- At least one full PoX cycle settled on mainnet, oracle submitting on schedule, collateral moving correctly against real sBTC
+
+The unit is a completed settlement cycle, not a swap count: several swaps that haven't reached a settlement boundary demonstrate less than one that has.
+
+**M3 — Sustained operation and a two-sided book — 50% / $4,000**
+- Oracle operated across at least 4 consecutive PoX cycles with no missed settlement
+- At least 3 distinct non-deployer wallets, including at least one taking the variable side
+- At least 300,000 STX total notional under hedge across settled mainnet swaps, reported alongside net sats actually settled
+
+The variable-side requirement is deliberate. The hard problem is not finding stackers who want rate certainty — it is finding participants willing to take the floating side of a yield stream that is structurally declining.
 
 ---
 
