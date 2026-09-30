@@ -2,8 +2,8 @@
 
 > The hedge for Stacks' junior tranche — fixed-rate protection for STX-only stackers against the yield volatility PoX-5's Bitcoin Staking bonds created.
 
-[![Clarinet](https://img.shields.io/badge/Clarinet-3.11.0-orange)](https://github.com/hirosystems/clarinet)
-[![Tests](https://img.shields.io/badge/tests-35%20passing-brightgreen)](#testing)
+[![Clarinet](https://img.shields.io/badge/Clarinet%20SDK-3.24.1-orange)](https://github.com/hirosystems/clarinet)
+[![Tests](https://img.shields.io/badge/tests-40%20passing-brightgreen)](#testing)
 [![Clarity](https://img.shields.io/badge/Clarity-v2-blue)](https://docs.stacks.co/clarity)
 [![Network](https://img.shields.io/badge/network-Stacks%20Testnet-purple)](https://explorer.hiro.so)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -440,7 +440,9 @@ Maintenance margin check:
 contracts/
 ├── sip-010-trait.clar      Standard SIP-010 fungible token interface
 ├── mock-sbtc.clar          Testnet mock sBTC (freely mintable, same interface)
-├── pox-rate-oracle.clar    Stores and calculates PoX yield rates per cycle
+├── pox-rate-oracle.clar    Admin-submitted PoX-5 rate oracle (what rho-core uses today)
+├── pox-rate-oracle-trustless.clar
+│                           Reads Tranche 2 accrual from PoX-5 directly (work in progress)
 └── rho-core.clar           Core swap protocol — full lifecycle management
 ```
 
@@ -650,9 +652,13 @@ frontend/
 
 | Tool | Version |
 |------|---------|
-| [Clarinet](https://github.com/hirosystems/clarinet) | v3.11.0+ |
+| [Clarinet](https://github.com/hirosystems/clarinet) CLI | v3.24+ (only needed for `clarinet check` and deployments) |
 | Node.js | v20+ |
 | npm | v10+ |
+
+**Contracts are pinned to epoch 4.0**, the epoch Stacks testnet is currently in. PoX-5 is only deployed from epoch 3.x onward, and every contract here that reads PoX-5 must be published after it exists in the simulated chain.
+
+**Test against the SDK, not the CLI.** `npm test` uses `@stacks/clarinet-sdk` 3.24.1, whose bundled PoX-5 matches the contract deployed on testnet. Older SDKs ship an earlier PoX-5 with a different interface — `get-rewards-per-token-for-cycle` took `(is-bond bool) (index uint)` rather than `(reward-cycle uint) (bond-index (optional uint))` — so code reading PoX-5 reward accounting would be tested against the wrong contract. A Clarinet CLI older than 3.24 rejects epoch 4.0 outright rather than silently regenerating a mismatched simnet plan.
 
 ### Clone and install
 
@@ -668,9 +674,9 @@ npm install
 clarinet check
 ```
 
-Expected output:
+Expected output (Clarinet CLI 3.24+):
 ```
-✔ 4 contracts checked
+✔ 5 contracts checked
 ```
 
 ### Run tests
@@ -681,8 +687,8 @@ npm test
 
 Expected output:
 ```
-Test Files  8 passed (8)
-     Tests  35 passed (35)
+Test Files  9 passed (9)
+     Tests  40 passed (40)
 ```
 
 ### Start the frontend
@@ -740,6 +746,9 @@ The test suite covers the full swap lifecycle and all error paths. Tests run aga
 | Admin-only submission | `pox-rate-oracle.test.ts` | Non-owner callers are rejected |
 | Zero stacked rejected | `pox-rate-oracle.test.ts` | Guards the rate division against a zero denominator |
 | Inputs stored for audit | `pox-rate-oracle.test.ts` | Raw inputs persist alongside the derived pool so the rate can be recomputed independently |
+| Oracle reads live PoX-5 | `trustless-oracle.test.ts` | Trustless oracle's Tranche 2 accumulator matches PoX-5's `get-rewards-per-token-for-cycle` exactly |
+| Undistributed cycle | `trustless-oracle.test.ts` | Returns `none` rather than a zero rate, so a swap cannot settle as though nothing was earned |
+| No admin surface | `trustless-oracle.test.ts` | Trustless oracle exposes no public function at all — nothing to submit, set, or transfer |
 | Trait conformance | `sip-010-trait.test.ts` | Trait definition loads correctly |
 
 **Verified lifecycle values (from main test):**
