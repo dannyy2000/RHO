@@ -58,7 +58,6 @@ genesis:
   - signers
   - signers-voting
   - costs-4
-  - costs-5
   - pox-5
 plan:
   batches:
@@ -75,6 +74,11 @@ plan:
       path: contracts/mock-sbtc.clar
       clarity-version: 2
     - transaction-type: emulated-contract-publish
+      contract-name: pox-rate-oracle-trustless
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/pox-rate-oracle-trustless.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
       contract-name: pox-rate-oracle-v2
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/pox-rate-oracle.clar
@@ -84,4 +88,4 @@ plan:
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/rho-core.clar
       clarity-version: 2
-    epoch: '2.1'
+    epoch: '4.0'
