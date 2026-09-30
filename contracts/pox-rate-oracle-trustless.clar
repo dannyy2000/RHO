@@ -27,8 +27,11 @@
 ;; STATUS - deployed to testnet 2026-09-23, partially verified.
 ;;
 ;;   tranche-2-rpt matches pox-5 exactly (cycles 19 and 20 verified on chain)
-;;   get-cycle-rate correctly returns none for an unaccounted cycle
-;;   tranche-2-accrual / cycle-rate FAIL with CostBalanceExceeded
+;;   tranche-2-accrual, cycle-rate FAIL with CostBalanceExceeded
+;;   get-cycle-rate FAILS on every accounted cycle for the same reason; it only
+;;   succeeds for cycles with no distribution, where it returns none. This is
+;;   the function rho-core would call, so the contract is not usable as a
+;;   rate source in its current form.
 ;;
 ;; Each pox-5 get-rewards-per-token-for-cycle read costs roughly 139KB of
 ;; read_length. The delta functions read twice - current cycle and previous -
