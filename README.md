@@ -29,6 +29,14 @@ All contracts are live and independently verifiable, deployed from `ST14V779KZH7
 | `mock-sbtc` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.mock-sbtc?chain=testnet) | [`ecf23cd2…`](https://explorer.hiro.so/txid/0xecf23cd2f3cd15904b5c8cd11bacea1f9b6eef3e814c0a25b71fb38a3161d82b?chain=testnet) |
 | `sip-010-trait` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.sip-010-trait?chain=testnet) | [`2f936d9b…`](https://explorer.hiro.so/txid/0x2f936d9b2d62a810cc8dbb29833fc81776d03fcda22ef806fbc451416d355001?chain=testnet) |
 
+**Trustless oracle — deployed, not yet wired into `rho-core`:**
+
+| Contract | Explorer | Deployment tx |
+|----------|----------|---------------|
+| `pox-rate-oracle-trustless-v2` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.pox-rate-oracle-trustless-v2?chain=testnet) | [`fc10b5fb…`](https://explorer.hiro.so/txid/0xfc10b5fb30e19d9d6607af835d7428ea3b89b47525ab86dd02186845a01a5b64?chain=testnet) |
+
+`rho-core-v4` still reads `pox-rate-oracle-v2`. Pointing settlement at the trustless oracle needs a new core contract, which is Milestone 1 work. Verified on testnet on 2026-10-05 through the node's read-only interface: `get-cycle-rate` returns the rate for finished cycles 20, 24 and 25, each equal to PoX-5's own entry, and `none` for cycle 26, which was still running. The first version, `pox-rate-oracle-trustless`, is superseded: it treated PoX-5's per-cycle entry as a running total and exceeded the read budget on every real cycle. Details are in the contract header.
+
 ### Version history — three defects found and fixed
 
 Clarity contracts are immutable and Stacks contract names cannot be reused, so each fix ships under a new name. Superseded versions remain on chain and are deliberately not linked above. `mock-sbtc` and `sip-010-trait` were unaffected throughout.
@@ -746,8 +754,10 @@ The test suite covers the full swap lifecycle and all error paths. Tests run aga
 | Admin-only submission | `pox-rate-oracle.test.ts` | Non-owner callers are rejected |
 | Zero stacked rejected | `pox-rate-oracle.test.ts` | Guards the rate division against a zero denominator |
 | Inputs stored for audit | `pox-rate-oracle.test.ts` | Raw inputs persist alongside the derived pool so the rate can be recomputed independently |
-| Oracle reads live PoX-5 | `trustless-oracle.test.ts` | Trustless oracle's Tranche 2 accumulator matches PoX-5's `get-rewards-per-token-for-cycle` exactly |
-| Undistributed cycle | `trustless-oracle.test.ts` | Returns `none` rather than a zero rate, so a swap cannot settle as though nothing was earned |
+| Oracle reads live PoX-5 | `trustless-oracle.test.ts` | Trustless oracle's Tranche 2 entry matches PoX-5's `get-rewards-per-token-for-cycle` exactly |
+| Per-cycle rate | `trustless-oracle.test.ts` | Real mainnet and testnet entries convert to the expected sats per 1M STX, with no subtraction of the previous cycle |
+| Cycle finality | `trustless-oracle.test.ts` | A cycle becomes final exactly when PoX-5 can no longer credit it; an unfinished cycle returns `none` rather than a partial rate |
+| Cycle with no entry | `trustless-oracle.test.ts` | Returns `none` rather than a zero rate, so a swap cannot settle as though nothing was earned |
 | No admin surface | `trustless-oracle.test.ts` | Trustless oracle exposes no public function at all — nothing to submit, set, or transfer |
 | Trait conformance | `sip-010-trait.test.ts` | Trait definition loads correctly |
 
@@ -848,7 +858,7 @@ This is inherent to collateralising an obligation with no upper bound — you ca
 
 ### The oracle is trusted in Phase 1
 
-Cycle rates are submitted by the contract deployer. The raw inputs are stored on chain so the derived rate is independently recomputable, but an admin could submit inputs that are internally consistent and still wrong. The replacement, `pox-rate-oracle-trustless`, reads PoX-5's own Tranche 2 accounting instead of accepting submissions. It is deployed but not yet usable: every read of a real cycle exceeds the read budget, as documented in that contract's header. Completing it is Milestone 1 work.
+Cycle rates are submitted by the contract deployer. The raw inputs are stored on chain so the derived rate is independently recomputable, but an admin could submit inputs that are internally consistent and still wrong. The replacement, `pox-rate-oracle-trustless-v2`, reads PoX-5's own Tranche 2 accounting instead of accepting submissions, and returns correct rates for finished testnet cycles. `rho-core-v4` does not use it yet; switching settlement to it, and confirming that a full `settle-cycle` stays within cost limits with it, is Milestone 1 work.
 
 ### Tranche 1 obligations are not yet read from chain
 
