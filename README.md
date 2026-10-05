@@ -98,6 +98,8 @@ Cycle inputs come from mainnet cycles 140-142 applied to testnet cycles 8-10. Mi
 | 9 | mainnet 141 | 2.98 BTC | 0.3 BTC | **515,879** |
 | 10 | mainnet 140 | 2.72 BTC | 0.3 BTC | **465,831** |
 
+**Correction, 2026-10-05.** The "Miner revenue" column is mislabelled. For cycles 141 and 142, 2.98 and 3.83 BTC are what PoX-5 credited to Tranche 2 stackers, already after the bond payout and the 15% reserve, not total miner revenue. The oracle formula then takes those deductions a second time, and 441,576,024 STX is cycle 143's stacked total rather than cycle 142's. The derived rates are therefore too low: PoX-5's own figure for cycle 142 is 909,456 sats per 1M STX, against 679,497 above. What these swaps demonstrate — payments, margin checks, liquidation and capacity release — is unaffected; the inputs were test data carrying the wrong label. The trustless oracle reads PoX-5's figure directly and does not use this input.
+
 ### Swap 1 — healthy swap, runs to completion
 
 1,000,000 STX notional (the per-swap pilot cap), fixed at 500,000 per cycle, 3 cycles, 10,000,000 sats collateral each side.
@@ -203,7 +205,7 @@ Nobody in Tranche 2 has a way to hedge this. You cannot underwrite a treasury st
 
 **There is currently no hedging product for Tranche 2 stackers on any Bitcoin Layer 2.** This problem is roughly two months old — it did not exist before PoX-5 activated on July 30, 2026 — which is a direct answer to "why doesn't this already exist."
 
-**The scale, quantified.** Miner revenue is running at roughly 3 BTC per cycle (~75 BTC/year), down 85–90% from cycles 95–109. Against that pot, STX-only stackers now receive about 57.4 BTC/year instead of 75 — a **23.5% reduction**, of which 15 points come from the reserve fund's share and 8.5 points from Genesis Bond's senior claim at ~250 BTC bonded. Only the second part scales with the bond pool, and it scales hard: **Tranche 2 reaches zero at ~2,500 BTC bonded, below the programme's own 3,000 BTC capacity target.** Full working, sources and caveats in [RESEARCH.md](./RESEARCH.md).
+**The scale, from PoX-5's own accounting.** In mainnet cycles 141–143, Tranche 2 stackers were credited 2.98, 3.83 and 3.96 BTC — a rate of 758,607, 909,456 and 903,631 sats per 1M STX, a 19% move in two cycles. In the first half of cycle 144, PoX-5 received 3.52 BTC and paid 0.14 BTC to bonds, 0.51 BTC to the reserve and 2.87 BTC to Tranche 2. With 160 BTC bonded today, the senior claim is small, about 4% of what PoX-5 receives. It grows with every BTC bonded, and it bites hardest when miner revenue falls, because the bond payout is fixed in BTC while revenue is not. At cycle 143's revenue, Tranche 2 would reach zero at roughly 4,000 BTC bonded at the 3% target; at lower revenue, the threshold falls proportionally. [RESEARCH.md](./RESEARCH.md) worked this through before these on-chain figures existed, using a revenue estimate of ~3 BTC per cycle that turned out to be too low.
 
 Ethereum solved the equivalent problem for its native yield (ETH staking rate) through protocols like Pendle Finance, which now manages billions in TVL hedging validator yield variance. Stacks now has an analogous — arguably sharper, since it's a two-sided tranche structure rather than a single floating rate — problem, and no derivative layer on top of it.
 
@@ -283,7 +285,7 @@ rate                = (tranche_2_pool_sats × 1e12) ÷ total_ustx_stacked_tranch
 
 where `tranche_1_obligation_sats` is the guaranteed payout owed to active protocol bonds that cycle (bonded BTC × each bond's target rate).
 
-**The rate unit is sats per 1,000,000 STX stacked, per cycle.** The `1e12` scalar is load-bearing, not cosmetic: real PoX yield is roughly 0.5 sats per STX per cycle, so a per-1-STX scalar truncates every real cycle to zero under Clarity's integer division. See [Version history](#version-history--three-defects-found-and-fixed).
+**The rate unit is sats per 1,000,000 STX stacked, per cycle.** The `1e12` scalar is load-bearing, not cosmetic: real PoX yield is under 1 sat per STX per cycle, so a per-1-STX scalar truncates every real cycle to zero under Clarity's integer division. See [Version history](#version-history--three-defects-found-and-fixed).
 
 Worked against live cycle-142 figures — miners paid 3.83 BTC, about 0.3 BTC owed to Tranche 1, 441,576,024 STX stacked:
 
@@ -291,6 +293,8 @@ Worked against live cycle-142 figures — miners paid 3.83 BTC, about 0.3 BTC ow
 pool = (383,000,000 - 30,000,000) × 0.85       = 300,050,000 sats
 rate = 300,050,000 × 1e12 ÷ 441,576,024,000,000 = 679,497
 ```
+
+These inputs carry the labelling error described under [Testnet Evidence](#testnet-evidence--full-lifecycle-and-liquidation): the formula is right, but 3.83 BTC is Tranche 2's share for cycle 142, not total miner revenue. PoX-5's own rate for that cycle is 909,456.
 
 **Resolved 2026-09-23 — correcting an earlier claim in this README.** This section previously stated that the published spec does not document read functions for bond capacity or target rate, and that trustless sourcing was therefore blocked. That was wrong. It was written from the SIP text rather than from the deployed contract. Querying `pox-5` directly, the required reads are live:
 
@@ -318,7 +322,7 @@ Run once for the fixed rate, once for the actual Tranche 2 rate. The net differe
 
 ### Why no external oracle?
 
-The Ethereum equivalent (Pendle Boros) depends on Chainlink to report the staking rate. If Chainlink fails, goes stale, or reports incorrect data, every settlement on the protocol is wrong. Rho reads from the blockchain itself. The oracle in Phase 1 is admin-assisted but the rate calculation happens inside the contract — an admin cannot fabricate a rate without submitting numbers that contradict on-chain PoX-5 data. Phase 2 replaces admin submission entirely with Clarity's native `get-burn-block-info?` to verify Bitcoin transaction proofs.
+The Ethereum equivalent (Pendle Boros) depends on Chainlink to report the staking rate. If Chainlink fails, goes stale, or reports incorrect data, every settlement on the protocol is wrong. Rho reads from the blockchain itself. The oracle in Phase 1 is admin-assisted but the rate calculation happens inside the contract — an admin cannot fabricate a rate without submitting numbers that contradict on-chain PoX-5 data. The trustless oracle, `pox-rate-oracle-trustless-v2`, removes admin submission entirely by reading the rate from PoX-5's own reward accounting. It is deployed on testnet; connecting it to settlement is Milestone 1 work.
 
 ---
 
@@ -827,7 +831,7 @@ Rho's pilot runs inside hard bounds that are **enforced in the contract as const
 | Fixed rate | 1,000,000,000 sats per 1M STX per cycle | Rejects fat-finger quotes only — over 1,000× the rates in the live testnet offers, so it does not bound economic exposure |
 | Concurrent active swaps | 25 | Keeps the pilot small enough to monitor manually |
 
-**Sizing rationale.** Total PoX miner revenue is currently running at roughly 3 BTC per cycle (~75 BTC/year — see [The Problem](#the-problem)). The caps bound swap size, and through it the size of each cycle's payments. At the fixed rates quoted in the live testnet offers — 500,000 to 700,000 sats per 1M STX per cycle — a full 5,000,000 STX of open swaps carries fixed payments of 2.5M to 3.5M sats a cycle, about 1% of a cycle's miner revenue. **The caps do not bound collateral held by the contract**; see [Deposits are not capped](#deposits-are-not-capped).
+**Sizing rationale.** Tranche 2 stackers alone were credited 3.0 to 4.0 BTC per cycle in mainnet cycles 141–143 (see [The Problem](#the-problem)). The caps bound swap size, and through it the size of each cycle's payments. At the fixed rates quoted in the live testnet offers — 500,000 to 700,000 sats per 1M STX per cycle — a full 5,000,000 STX of open swaps carries fixed payments of 2.5M to 3.5M sats a cycle, about 1% of what Tranche 2 stackers are credited in a cycle. **The caps do not bound collateral held by the contract**; see [Deposits are not capped](#deposits-are-not-capped).
 
 **Capacity is released, not consumed permanently.** When a swap closes or is liquidated, its notional and slot return to the available pool. Both exit paths are covered by tests, because a counter that only increments would silently brick the protocol after 25 swaps had ever existed.
 
@@ -922,7 +926,7 @@ minimum_collateral   = remaining_obligation × 110 ÷ 100
 ```
 
 **Oracle risk (Phase 1)**
-The oracle is admin-controlled in Phase 1. An admin cannot submit a rate that is mathematically impossible, but they could submit a rate that favours one side. Acknowledged limitation of the POC phase. Mitigation: multi-sig oracle key, public rate data posted with each submission. Phase 2 removes admin dependency entirely using Bitcoin transaction proofs.
+The oracle is admin-controlled in Phase 1. An admin cannot submit a rate that is mathematically impossible, but they could submit a rate that favours one side. Acknowledged limitation of the POC phase. Mitigation: multi-sig oracle key, public rate data posted with each submission. The trustless oracle removes the admin dependency by reading PoX-5 directly; it is deployed on testnet, and connecting it to settlement is Milestone 1 work.
 
 **Clarity safety**
 Clarity is a decidable language — its execution is fully predictable and analysable before deployment. There are no reentrancy vulnerabilities (no callback mechanism), no integer overflow (Clarity natively bounds arithmetic), and no hidden state (all state is on-chain and readable). Clarity's `check_checker` static analysis pass runs on every contract on every `clarinet check`.
@@ -946,9 +950,9 @@ The contracts have no upgrade mechanism. What is deployed is what runs. This is 
 
 ### Phase 2 — Trustless Oracle
 
-- Replace admin oracle with Bitcoin transaction proof verification
-- Use Clarity's `get-burn-block-info?` to read Bitcoin block data natively
-- Anyone can submit a cycle rate with a Bitcoin proof — no trusted party required
+- Replace the admin oracle with `pox-rate-oracle-trustless-v2`, which reads each cycle's Tranche 2 rate from PoX-5's own accounting
+- No submissions and no admin functions: the rate is what PoX-5 credited stackers
+- Deployed and verified on testnet; connecting it to settlement is Milestone 1 work
 
 ### Phase 3 — Liquidity Pool
 
@@ -973,7 +977,7 @@ Rho is not portable. It specifically requires:
 1. **PoX yield** — the underlying rate being swapped. Only exists on Stacks.
 2. **sBTC** — 1:1 Bitcoin-backed collateral. Stacks' native Bitcoin asset.
 3. **Clarity** — deterministic execution, native Bitcoin block reading, and decidable analysis. No other smart contract language provides all three.
-4. **Stacks Bitcoin oracle** — `get-burn-block-info?` allows the Phase 2 oracle to read Bitcoin block data without trusting any external party.
+4. **PoX-5's on-chain accounting** — the yield being swapped is computed by a Clarity contract, so Rho's oracle reads the rate directly instead of trusting an external feed.
 
 This protocol makes sense precisely because Stacks is the only chain where you can swap a Bitcoin yield rate, collateralise in Bitcoin, settle on Bitcoin block timing, and verify everything against the Bitcoin chain natively.
 
