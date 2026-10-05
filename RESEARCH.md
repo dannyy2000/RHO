@@ -1,5 +1,7 @@
 # The Subordination of STX-Only Stackers Under PoX-5
 
+> **Update, 2026-10-05.** This analysis assumed miner revenue of ~3 BTC per cycle. PoX-5's own accounting since shows Tranche 2 alone credited 3.0–4.0 BTC per cycle in cycles 141–143, and 160 BTC bonded rather than ~250. The structure of the argument stands; the revenue figures and the 2,500 BTC zero-point below are out of date. Current figures are in the README under [The Problem](./README.md#the-problem).
+
 **2026-09-20**
 
 PoX-5 restructured how Bitcoin miner revenue reaches STX stackers. The change is documented, but its arithmetic consequence does not appear to have been published: at the Bitcoin Staking program's own stated capacity target, STX-only stackers receive **nothing**.
