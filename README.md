@@ -811,13 +811,13 @@ Rho's pilot runs inside hard bounds that are **enforced in the contract as const
 
 | Cap | Value | Purpose |
 |-----|-------|---------|
-| Per-swap notional | 1,000,000 STX | No single position can dominate the pilot |
-| Protocol-wide notional | 5,000,000 STX | Ceiling on total simultaneous exposure |
+| Per-swap notional | 1,000,000 STX | No single swap can fill the pilot |
+| Protocol-wide notional | 5,000,000 STX | Ceiling on total notional, and so on payment flows, across open swaps |
 | Swap duration | 13 cycles (~6 months) | Matches the Genesis Bond term; bounds oracle dependence |
-| Fixed rate | 10,000 bps | Rejects fat-finger and nonsense quotes |
+| Fixed rate | 1,000,000,000 sats per 1M STX per cycle | Rejects fat-finger quotes only — over 1,000× the rates in the live testnet offers, so it does not bound economic exposure |
 | Concurrent active swaps | 25 | Keeps the pilot small enough to monitor manually |
 
-**Sizing rationale.** Total PoX miner revenue is currently running at roughly 3 BTC per cycle (~75 BTC/year — see [The Problem](#the-problem)). The caps are set so that the maximum obligation across every open swap stays a small fraction of a single cycle's real yield. A total failure of the pilot is bounded to an amount that cannot be systemically meaningful to any participant or to the wider ecosystem.
+**Sizing rationale.** Total PoX miner revenue is currently running at roughly 3 BTC per cycle (~75 BTC/year — see [The Problem](#the-problem)). The caps bound swap size, and through it the size of each cycle's payments. At the fixed rates quoted in the live testnet offers — 500,000 to 700,000 sats per 1M STX per cycle — a full 5,000,000 STX of open swaps carries fixed payments of 2.5M to 3.5M sats a cycle, about 1% of a cycle's miner revenue. **The caps do not bound collateral held by the contract**; see [Deposits are not capped](#deposits-are-not-capped).
 
 **Capacity is released, not consumed permanently.** When a swap closes or is liquidated, its notional and slot return to the available pool. Both exit paths are covered by tests, because a counter that only increments would silently brick the protocol after 25 swaps had ever existed.
 
@@ -844,11 +844,11 @@ When the actual rate rises above the fixed rate by more than the fixed party's c
 
 This is inherent to collateralising an obligation with no upper bound — you cannot fully margin it in advance. Real interest-rate swap markets handle it with variation margin posted by both sides as rates move.
 
-**Today's mitigation is disclosure, not enforcement.** A fixed party's posted collateral is visible via `get-offer` before anyone accepts, so a counterparty can assess coverage. The contract does not require it to be adequate. Two-sided variation margin is M2 work.
+**Today's mitigation is disclosure, not enforcement.** A fixed party's posted collateral is visible via `get-offer` before anyone accepts, so a counterparty can assess coverage. The contract does not require it to be adequate. Two-sided variation margin is Milestone 1 work.
 
 ### The oracle is trusted in Phase 1
 
-Cycle rates are submitted by the contract deployer. The raw inputs are stored on chain so the derived rate is independently recomputable, but an admin could submit inputs that are internally consistent and still wrong. Phase 2 replaces this with Bitcoin proof verification.
+Cycle rates are submitted by the contract deployer. The raw inputs are stored on chain so the derived rate is independently recomputable, but an admin could submit inputs that are internally consistent and still wrong. The replacement, `pox-rate-oracle-trustless`, reads PoX-5's own Tranche 2 accounting instead of accepting submissions. It is deployed but not yet usable: every read of a real cycle exceeds the read budget, as documented in that contract's header. Completing it is Milestone 1 work.
 
 ### Tranche 1 obligations are not yet read from chain
 
@@ -860,7 +860,33 @@ This is an implementation gap, not a protocol one. PoX-5 does expose the necessa
 
 `pox-rate-oracle` sets `contract-owner` to `tx-sender` at deployment and provides no function to transfer it. If that key is lost, no further cycle rates can ever be submitted. Every active swap then becomes unsettleable, and because `close-swap` requires all cycles settled, collateral in those swaps would be stranded.
 
-There is no recovery path in the current contract. The mitigation is operational: deploy from a key with a custody model appropriate to the value at risk, which the pilot caps deliberately bound. An owner-transfer function is M2 work.
+There is no recovery path in the current contract. The mitigation is operational: deploy from a key with a custody model appropriate to the value at risk. An owner transfer and recovery path is Milestone 1 work, delivered before mainnet.
+
+### Deposits are not capped
+
+The pilot caps bound swap **size**, and through it the size of each cycle's payments. They do not bound **deposits**. `post-offer` and `accept-offer` require collateral above zero and set no upper limit, so the total collateral held by `rho-core` is unbounded.
+
+This matters because collateral is what a contract defect puts at risk. The liquidation underflow fixed in v3 trapped deposited collateral, not notional. A comparable defect would expose everything deposited, not an amount the caps limit.
+
+Not addressed by the current milestones.
+
+### Swap slots can be occupied for almost nothing
+
+The 25-swap cap is shared by everyone and tracked in aggregate; the contract does not record who holds which swaps. Nothing sets a minimum size, a minimum fixed rate, or a minimum deposit beyond 1 sat, and nothing prevents a wallet from accepting its own offer.
+
+One wallet can therefore open 25 swaps with negligible size, a zero fixed rate and 1-sat deposits — about 50 sats in total — and hold every slot for up to 13 cycles. A zero-rate swap is never liquidated, because the variable party never owes anything, so those slots cannot be freed early. No one else could open a swap until they close.
+
+The per-swap notional cap prevents a single *swap* from filling the pilot. It does not prevent a single *participant* from doing so.
+
+Not addressed by the current milestones.
+
+### Initial margin is not checked in the contract
+
+`accept-offer` requires only that the variable party's deposit is above zero. The 110% requirement is enforced by the frontend at acceptance, and by the contract only after a cycle in which the variable party pays. Anyone calling the contract directly can open an under-collateralised swap.
+
+For a multi-cycle swap, the first adverse settlement that leaves the deposit below the requirement for the remaining cycles liquidates it. That protects the fixed party's collateral but ends their hedge early. For a single-cycle swap, or the final cycle of any swap, no cycles remain to protect, so the margin check has nothing to enforce: if the variable party's deposit is short, the fixed party absorbs the difference.
+
+Not addressed by the current milestones.
 
 ### Testing used a single principal
 
