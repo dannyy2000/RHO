@@ -8,7 +8,7 @@
 ;;
 ;; This contract submits nothing. It reads PoX-5's own reward accounting.
 ;;
-;; PoX-5 computes the Tranche 2 residual itself, in distribute-rewards:
+;; PoX-5 computes the Tranche 2 residual itself, in calculate-rewards:
 ;;
 ;;   (try! (assert-all-active-bonds-included bond-periods calculation-height))
 ;;   (remaining-rewards  ...)                       ;; after Tranche 1 bonds are paid
@@ -18,39 +18,49 @@
 ;;
 ;; with RESERVE_RATIO u1500 of u10000 (15%) and PRECISION u1e18. The value
 ;; returned by get-rewards-per-token-for-cycle with a `none` bond-index is
-;; therefore the cumulative Tranche 2 accrual per uSTX, already net of both the
-;; senior bond claim and the reserve cut. Its per-cycle delta is the rate.
+;; therefore a cycle's Tranche 2 rewards per uSTX, already net of both the
+;; senior bond claim and the reserve cut.
 ;;
 ;; Reconstructing that from miner revenue would mean re-deriving a number the
 ;; protocol has already settled, and could disagree with it. Reading it cannot.
 ;;
-;; STATUS - deployed to testnet 2026-09-23, partially verified.
+;; THE VALUE IS PER CYCLE, NOT CUMULATIVE ACROSS CYCLES.
 ;;
-;;   tranche-2-rpt matches pox-5 exactly (cycles 19 and 20 verified on chain)
-;;   tranche-2-accrual, cycle-rate FAIL with CostBalanceExceeded
-;;   get-cycle-rate FAILS on every accounted cycle for the same reason; it only
-;;   succeeds for cycles with no distribution, where it returns none. This is
-;;   the function rho-core would call, so the contract is not usable as a
-;;   rate source in its current form.
+;; rewards-per-token-for-cycle is keyed by reward cycle. Each cycle's entry
+;; starts at zero (default-to u0) and calculate-rewards adds each
+;; distribution's accrual to the entry for the cycle containing its
+;; calculation height. A finished entry is therefore that cycle's Tranche 2
+;; rewards per uSTX, and is the rate directly. The first version of this
+;; contract, deployed 2026-09-23 as pox-rate-oracle-trustless, subtracted the
+;; previous cycle's entry as though the map were a running total. On mainnet
+;; that gives 150,848 for cycle 142 instead of 909,456, and zero for cycle 143,
+;; whose entry is lower than cycle 142's.
 ;;
-;; Each pox-5 get-rewards-per-token-for-cycle read costs roughly 139KB of
-;; read_length. The delta functions read twice - current cycle and previous -
-;; totalling 278,219 against a 200,000 budget. The arithmetic is right; the
-;; access pattern is not.
+;; WHEN A CYCLE IS FINAL.
 ;;
-;; Fix is a permissionless checkpoint: a public function anyone may call that
-;; reads pox-5 once and stores that cycle's cumulative value. Deltas then come
-;; from two cheap local map reads. It stays trustless because the function
-;; reads pox-5 itself rather than accepting a submitted figure, and because
-;; anyone can call it and anyone can verify a stored value against pox-5.
-;; rho-core must not consume the delta functions until that lands, or
-;; settle-cycle inherits the same cost.
+;; PoX-5 distributes in half-cycle periods. calculate-rewards credits rewards
+;; to the reward cycle containing (start of the current half-cycle - 1), so
+;; the second half of cycle c is credited to c during the first half of c+1.
+;; Once the second half of c+1 begins, every later calculation height falls in
+;; c+1 or beyond, and pox-5 asserts calculation heights only increase, so
+;; cycle c's entry can no longer change. get-cycle-rate returns none until
+;; then rather than a partial figure.
+;;
+;; If no one calls calculate-rewards during the first half of c+1, the rewards
+;; for c's second half are credited to c+1 instead. Cycle c's figure is then
+;; final but understated. Every stacker's payout follows the same attribution,
+;; so Rho settles on what stackers were actually credited.
+;;
+;; COST. Each pox-5 read costs roughly 139,000 of the 200,000 read_length
+;; budget, so get-cycle-rate reads pox-5 exactly once. The first version read
+;; it up to five times and exceeded the budget on every real cycle. Finality is
+;; computed from burn-block-height and the constants below rather than by
+;; asking pox-5, for the same reason.
 ;;
 ;; MAINNET DEPLOYMENT: change the PoX-5 principal below to
-;; 'SP000000000000000000002Q6VF98.pox-5 - boot contract addresses differ by
-;; network. It is the only line that must change.
-
-(define-constant ERR-CYCLE-NOT-ACCOUNTED (err u300))
+;; 'SP000000000000000000002Q6VF78.pox-5, FIRST-BURN-HEIGHT to u666050 and
+;; REWARD-CYCLE-LENGTH to u2100. Boot contract addresses and cycle parameters
+;; differ by network; the values below are testnet's, from /v2/pox.
 
 ;; PoX-5's fixed-point scale. Must match PRECISION in the boot contract.
 (define-constant POX-PRECISION u1000000000000000000)
@@ -58,50 +68,48 @@
 ;; Rho quotes rates as sats per 1,000,000 STX (1e12 uSTX) per cycle.
 (define-constant RHO-NOTIONAL-UNIT u1000000000000)
 
-;; Cumulative Tranche 2 rewards per uSTX, scaled by 1e18, as of this cycle.
+;; Testnet PoX parameters.
+(define-constant FIRST-BURN-HEIGHT u0)
+(define-constant REWARD-CYCLE-LENGTH u900)
+
+;; Tranche 2 rewards per uSTX for one cycle, scaled by 1e18.
 ;; A `none` bond-index selects the STX-only staker tranche.
 (define-read-only (tranche-2-rpt (cycle uint))
   (contract-call? 'ST000000000000000000002AMW42H.pox-5
     get-rewards-per-token-for-cycle cycle none))
 
-;; Tranche 2 accrual for a single cycle: the delta between consecutive
-;; cumulative values. Guarded against underflow in case the accumulator is
-;; ever reset or read out of order.
-(define-read-only (tranche-2-accrual (cycle uint))
-  (let (
-    (now (tranche-2-rpt cycle))
-    (prev (if (is-eq cycle u0) u0 (tranche-2-rpt (- cycle u1))))
-  )
-    (if (>= now prev) (- now prev) u0)))
+;; First burn height at which no further distribution can be credited to
+;; `cycle`: the start of the second half of the following cycle.
+(define-read-only (cycle-final-height (cycle uint))
+  (+ FIRST-BURN-HEIGHT
+     (* (+ cycle u1) REWARD-CYCLE-LENGTH)
+     (/ REWARD-CYCLE-LENGTH u2)))
+
+(define-read-only (is-cycle-final (cycle uint))
+  (>= burn-block-height (cycle-final-height cycle)))
+
+;; Rate in Rho's unit, sats per 1,000,000 STX, from a per-uSTX value.
+(define-read-only (rate-from-rpt (rpt uint))
+  (/ (* rpt RHO-NOTIONAL-UNIT) POX-PRECISION))
 
 ;; Sats earned by a given stacked amount over one cycle.
-;; Deliberately mirrors PoX-5's own compute-earned-rewards:
-;;   earned = shares * (rpt-current - rpt-paid) / PRECISION
+;; Mirrors PoX-5's own compute-earned-rewards:
+;;   earned = shares * rewards-per-token / PRECISION
 (define-read-only (earned-sats (cycle uint) (stacked-ustx uint))
-  (/ (* stacked-ustx (tranche-2-accrual cycle)) POX-PRECISION))
+  (/ (* stacked-ustx (tranche-2-rpt cycle)) POX-PRECISION))
 
-;; Has PoX-5 accounted for this cycle yet? The accumulator is zero before the
-;; first distribution, so a zero reading means "not yet computed" rather than
-;; "a cycle that paid nothing".
-(define-read-only (is-cycle-accounted (cycle uint))
-  (> (tranche-2-rpt cycle) u0))
-
-;; Rate in Rho's unit: sats per 1,000,000 STX per cycle.
-(define-read-only (cycle-rate (cycle uint))
-  (earned-sats cycle RHO-NOTIONAL-UNIT))
-
-;; Drop-in replacement for the admin oracle's read interface, so rho-core can
-;; switch source with a single contract reference change. Returns none for a
-;; cycle PoX-5 has not yet distributed, which surfaces as ERR-ORACLE-RATE-NOT-FOUND
-;; in the core contract rather than silently settling at zero.
+;; Drop-in replacement for the admin oracle's read interface; rho-core reads
+;; only rate-sats-per-mstx. Returns none until the cycle is final, and for a
+;; final cycle PoX-5 credited nothing to, which surfaces as
+;; ERR-ORACLE-RATE-NOT-FOUND in the core contract rather than settling at zero.
 (define-read-only (get-cycle-rate (cycle uint))
-  (if (is-cycle-accounted cycle)
-    (some {
-      rate-sats-per-mstx: (cycle-rate cycle),
-      tranche-2-accrual-per-ustx: (tranche-2-accrual cycle),
-      cumulative-rpt: (tranche-2-rpt cycle),
-      total-ustx-stacked: (contract-call? 'ST000000000000000000002AMW42H.pox-5
-                            get-total-ustx-stacked cycle),
-      source: "pox-5"
-    })
+  (if (is-cycle-final cycle)
+    (let ((rpt (tranche-2-rpt cycle)))
+      (if (> rpt u0)
+        (some {
+          rate-sats-per-mstx: (rate-from-rpt rpt),
+          tranche-2-rewards-per-ustx: rpt,
+          source: "pox-5"
+        })
+        none))
     none))
