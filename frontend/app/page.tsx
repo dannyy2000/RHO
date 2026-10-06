@@ -16,7 +16,7 @@ const faqs = [
   },
   {
     q: "Does that actually cost stackers anything today?",
-    a: "Yes, and it is measurable. Miners are currently paying roughly 3 BTC per cycle, about 75 BTC a year. Genesis Bond has around 250 BTC locked at a guaranteed 3%, which is about 7.5 BTC a year claimed ahead of stackers. After the reserve's 15% share, STX-only stackers receive roughly 57 BTC a year instead of 75 — around a 23% reduction. About 15 points of that is the reserve and 8.5 points is the bond claim, and only the bond portion grows as more BTC is locked. At roughly 2,500 BTC bonded, the stacker share reaches zero.",
+    a: "Yes, and PoX-5 reports it on chain. In the first half of mainnet cycle 144, PoX-5 received 3.52 BTC: 0.14 BTC went to bonds, 0.51 BTC to the reserve, and 2.87 BTC to STX-only stackers. With 160 BTC bonded today the bond claim is small, about 4% of what comes in. It grows with every BTC bonded, and it bites hardest when miner revenue falls, because bonds are paid a fixed amount and stackers absorb the shortfall. The stacker rate also moves with miner revenue: 758,607 sats per 1M STX in cycle 141, 909,456 in cycle 142.",
   },
   {
     q: "What is an interest rate swap?",
@@ -24,7 +24,7 @@ const faqs = [
   },
   {
     q: "What is the oracle and why is it needed?",
-    a: "The Rho smart contract cannot automatically read Bitcoin transaction data. The oracle is the bridge — each cycle it posts the raw inputs: total BTC paid by miners, the amount owed to Genesis Bond holders ahead of stackers, and total STX stacked. The contract derives the stacker rate from those inputs itself, so the submitted numbers can be checked against the formula rather than taken on trust. In Phase 1 the Rho team runs the oracle. Phase 2 replaces this with cryptographic Bitcoin proofs anyone can submit.",
+    a: "The Rho smart contract cannot automatically read Bitcoin transaction data. The oracle is the bridge — each cycle it posts the raw inputs: total BTC paid by miners, the amount owed to Genesis Bond holders ahead of stackers, and total STX stacked. The contract derives the stacker rate from those inputs itself, so the submitted numbers can be checked against the formula rather than taken on trust. Today the Rho team runs this oracle. Its replacement reads the stacker rate straight from PoX-5's own accounting, so nobody submits anything. It is live on testnet and is being connected to settlement.",
   },
   {
     q: "What is sBTC?",
@@ -32,11 +32,11 @@ const faqs = [
   },
   {
     q: "What happens if collateral runs out?",
-    a: "Rho enforces a maintenance margin — the variable party's collateral must stay above 110% of their remaining obligation at all times. If a settlement pushes them below that threshold, the contract immediately liquidates the position and returns the correct amounts to both parties. No manual action required from anyone.",
+    a: "Rho enforces a maintenance margin — the variable party's collateral must stay above 110% of their remaining obligation at all times. If a settlement pushes them below that threshold, that same settlement liquidates the position and returns the remaining collateral to both parties. The fixed party's collateral is not margin-checked yet; two-sided margin is the next contract upgrade.",
   },
   {
     q: "Do I need to take action every cycle?",
-    a: "No. Settlement is permissionless and the Rho oracle bot triggers it automatically. You only need to act when you want to close the swap after all cycles complete.",
+    a: "No. Settlement is permissionless: once a cycle's rate is available, anyone can settle it, including either party. During the testnet pilot the Rho team submits rates and runs settlement; it is not automated yet. You only need to act to close the swap after all cycles complete.",
   },
 ];
 
@@ -82,7 +82,7 @@ export default function HomePage() {
             },
             {
               label: "The risk just changed",
-              body: "Since PoX-5, Genesis Bond holders are paid a guaranteed rate before STX-only stackers, who now receive only what remains. At roughly 250 BTC bonded, stacker yield is already down about 23% — and unlike the reserve's fixed share, the bond portion grows with every BTC added.",
+              body: "Since PoX-5, Genesis Bond holders are paid a guaranteed rate before STX-only stackers, who now receive only what remains. The stacker rate moved 19% in two cycles, and the bond claim ahead of it grows with every BTC added.",
             },
             {
               label: "Nobody built this yet",
