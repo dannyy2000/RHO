@@ -13,7 +13,7 @@ function shortAddr(a: string) {
 function fmt(n: number) { return n.toLocaleString(); }
 
 function AcceptModal({ offer, onClose }: { offer: Offer; onClose: () => void }) {
-  const { connected, connect } = useWallet();
+  const { address, connected, connect } = useWallet();
   const [collateral, setCollateral] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
@@ -28,12 +28,17 @@ function AcceptModal({ offer, onClose }: { offer: Offer; onClose: () => void }) 
     setSubmitting(true);
     try {
       const { request } = await import("@stacks/connect");
-      const { uintCV } = await import("@stacks/transactions");
+      const { uintCV, Pc } = await import("@stacks/transactions");
+      // The deposit moves mock sBTC out of the caller's wallet. Without a
+      // post-condition covering it, the wallet's default deny mode aborts the
+      // transaction after the contract call succeeds.
       await request("stx_callContract", {
         contract: CONTRACTS.core,
         functionName: "accept-offer",
         functionArgs: [uintCV(offer.id), uintCV(collateralNum)],
         network: NETWORK,
+        postConditionMode: "deny",
+        postConditions: [Pc.principal(address!).willSendEq(collateralNum).ft(CONTRACTS.sbtc, "mock-sbtc")],
       });
       setDone(true);
     } catch {
@@ -51,8 +56,8 @@ function AcceptModal({ offer, onClose }: { offer: Offer; onClose: () => void }) 
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h2 className="text-base font-bold text-slate-900 mb-2">Swap accepted</h2>
-            <p className="text-sm text-slate-500 mb-5">Your transaction is submitted. Check your dashboard to track the position.</p>
+            <h2 className="text-base font-bold text-slate-900 mb-2">Transaction submitted</h2>
+            <p className="text-sm text-slate-500 mb-5">It can take a few minutes to confirm. Your position appears on the dashboard once it does.</p>
             <button onClick={onClose} className="bg-slate-900 text-white font-semibold px-5 py-2.5 rounded-xl text-sm w-full hover:bg-slate-700 transition-colors">
               Close
             </button>
@@ -185,7 +190,7 @@ export default function MarketPage() {
             <p className="text-sm font-semibold text-amber-900 mb-1">How is the rate quoted?</p>
             <p className="text-sm text-amber-800 leading-relaxed">
               Rates are quoted as <strong>sats earned per 1,000,000 STX stacked, per cycle</strong>.
-              Cycle 142 paid roughly 679,497 on that basis. A 500,000 rate on a 1,000,000 STX notional is a fixed payment of 500,000 sats per cycle. No price feed needed.
+              Mainnet cycle 142 paid 909,456 on that basis. A 500,000 rate on a 1,000,000 STX notional is a fixed payment of 500,000 sats per cycle. No price feed needed.
             </p>
           </div>
         </div>
