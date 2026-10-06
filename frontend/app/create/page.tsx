@@ -30,7 +30,7 @@ const faqs = [
 ];
 
 export default function CreatePage() {
-  const { connected, connect } = useWallet();
+  const { address, connected, connect } = useWallet();
 
   const [notional, setNotional] = useState("");
   const [rate, setRate] = useState("");
@@ -57,12 +57,16 @@ export default function CreatePage() {
     setSubmitting(true);
     try {
       const { request } = await import("@stacks/connect");
-      const { uintCV } = await import("@stacks/transactions");
+      const { uintCV, Pc } = await import("@stacks/transactions");
+      // See accept-offer in market/page.tsx: the collateral transfer needs a
+      // post-condition or deny mode aborts the transaction.
       await request("stx_callContract", {
         contract: CONTRACTS.core,
         functionName: "post-offer",
         functionArgs: [uintCV(n), uintCV(r), uintCV(d), uintCV(c)],
         network: NETWORK,
+        postConditionMode: "deny",
+        postConditions: [Pc.principal(address!).willSendEq(c).ft(CONTRACTS.sbtc, "mock-sbtc")],
       });
       setSubmitted(true);
     } catch {
