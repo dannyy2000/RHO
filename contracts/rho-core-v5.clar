@@ -17,7 +17,7 @@
 ;;   gives the fixed party a known worst case per cycle, equal to the variable
 ;;   party's (the full fixed payment, when the actual rate is zero):
 ;;
-;;     worst-case-per-cycle = notional * fixed-rate / RATE-SCALAR
+;;     worst-case-per-cycle = notional * fixed-rate / RATE-SCALAR, rounded up
 ;;
 ;;   Both sides are margined against it (two-sided variation margin):
 ;;     - initial margin: 110% of MARGIN-CYCLES cycles of worst case, checked
@@ -29,8 +29,10 @@
 ;;     - on liquidation the defaulting side forfeits one cycle of worst case
 ;;       to the other side, so walking away from a losing swap is not free
 ;;
-;;   Collateral per side is bounded above by the full-term worst case + 10%,
-;;   so deposits are bounded by the notional and rate caps.
+;;   Deposits and top-ups may not take a side above the full-term worst case
+;;   + 10%, so what a party puts in is bounded by the notional and rate caps.
+;;   Settlement winnings are not capped: a side's balance can exceed that
+;;   limit by what it has won from the other side.
 ;;
 ;;   A swap starts at the cycle after acceptance, so no one is paid for a
 ;;   partial cycle, and cycles settle strictly in order.
@@ -139,9 +141,11 @@
 
 ;; -- Margin arithmetic ----------------------------------------------------
 
-;; The most either side can owe in one cycle, given the ceiling.
+;; The most either side can owe in one cycle, given the ceiling. Rounded up:
+;; the fixed side's capped payment is floor(2NF/S) - floor(NF/S), which is
+;; one sat above floor(NF/S) for some terms, and never above ceil(NF/S).
 (define-read-only (worst-case-per-cycle (notional-ustx uint) (fixed-rate uint))
-  (/ (* notional-ustx fixed-rate) RATE-SCALAR))
+  (/ (+ (* notional-ustx fixed-rate) (- RATE-SCALAR u1)) RATE-SCALAR))
 
 (define-read-only (initial-margin (notional-ustx uint) (fixed-rate uint) (duration uint))
   (/ (* (* (worst-case-per-cycle notional-ustx fixed-rate) (min-of duration MARGIN-CYCLES))
@@ -153,7 +157,7 @@
         MAINTENANCE-MARGIN-PCT)
      u100))
 
-;; Full-term worst case + 10%. No side may hold more collateral than this.
+;; Full-term worst case + 10%. A deposit or top-up may not take a side above this.
 (define-read-only (max-collateral (notional-ustx uint) (fixed-rate uint) (duration uint))
   (/ (* (* (worst-case-per-cycle notional-ustx fixed-rate) duration) INITIAL-MARGIN-PCT) u100))
 
@@ -219,7 +223,7 @@
     (asserts! (<= duration-cycles MAX-DURATION-CYCLES) ERR-EXCEEDS-DURATION-CAP)
     (asserts! (<= fixed-rate-sats-per-mstx MAX-FIXED-RATE) ERR-EXCEEDS-RATE-CAP)
     ;; Rejects a zero fixed rate and any rate too small to produce a payment.
-    (asserts! (> (worst-case-per-cycle notional-ustx fixed-rate-sats-per-mstx) u0) ERR-INVALID-PARAMS)
+    (asserts! (> (/ (* notional-ustx fixed-rate-sats-per-mstx) RATE-SCALAR) u0) ERR-INVALID-PARAMS)
     (asserts! (>= collateral-sats (initial-margin notional-ustx fixed-rate-sats-per-mstx duration-cycles))
               ERR-BELOW-INITIAL-MARGIN)
     (asserts! (<= collateral-sats (max-collateral notional-ustx fixed-rate-sats-per-mstx duration-cycles))
