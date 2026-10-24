@@ -147,6 +147,24 @@ Read back from chain rather than asserted here:
 
 Both legs were signed by the same principal, so this exercises contract behaviour rather than counterparty dynamics or price discovery. Testnet cycle numbers (8-10) are not the mainnet cycles the data came from; only the economic inputs are real. Collateral is `mock-sbtc`, not bridged sBTC. Reproduce with `deployments/simulation-v3.testnet-plan.yaml`.
 
+### Swap 3 — opened through the website by a non-deployer wallet
+
+On **2026-10-06** a wallet other than the deployer, `ST9K3KRZQJMAK0B2Y5SYHPET6G0S4QAATYH66YD7`, accepted seeded offer #3 (250,000 STX notional, fixed 700,000, 2 cycles) on rhoprotocol.xyz, depositing 400,000 sats of mock sBTC. It is swap 1 on `rho-core-v4`, covering testnet cycles 27 and 28.
+
+The first attempt failed with `abort_by_post_condition` ([`0x15e8e83b…`](https://explorer.hiro.so/txid/0x15e8e83bc4219de1f0a63b509066566f6a1eb55ef56222f1519baed00b0aa820?chain=testnet)): the site sent the deposit with no post-condition, so the wallet's default deny mode aborted it. Nobody had accepted or posted an offer through the site before, which is why it hadn't been caught. After the fix the accept succeeded ([`0x99ca54ce…`](https://explorer.hiro.so/txid/0x99ca54ceb6d4a74c0797c1c84522411be19497d5350b93489bf2a716e9ec5831?chain=testnet)).
+
+It settled on **2026-10-24**. `rho-core-v4` reads the admin oracle, so rates had to be submitted. The rates are mainnet PoX-5's own Tranche 2 figures, **mainnet cycle 143 applied to testnet cycle 27 and mainnet cycle 142 to testnet cycle 28**, because testnet's PoX rate (about 6.16M sats per 1M STX) is not a market rate. The inputs are the real mainnet Tranche 2 share count, a Tranche 1 obligation of 0, and a revenue figure chosen so the oracle formula reproduces PoX-5's published rate exactly. They are not mainnet's gross miner revenue.
+
+| Step | Detail | Tx |
+|---|---|---|
+| Rate, cycle 27 | 903,631 (mainnet 143) | [`0x7521f2ca…`](https://explorer.hiro.so/txid/0x7521f2ca402ce93dd7e66dd0b6ce24dce8bdc5f827b31eb0ae3c3a45d819a7d9?chain=testnet) |
+| Rate, cycle 28 | 909,456 (mainnet 142) | [`0x336d31ee…`](https://explorer.hiro.so/txid/0x336d31ee5d6d2a9ccba0bbee26683ac182619d19da16c8fbf48717a474124f28?chain=testnet) |
+| Settle cycle 27 | fixed 175,000 / variable 225,907, so 50,907 to the variable party | [`0xe4644561…`](https://explorer.hiro.so/txid/0xe4644561196f8ddfa7fd0b83a0854a37398b6edf1850818d9096090a9f1bfbbf?chain=testnet) |
+| Settle cycle 28 | fixed 175,000 / variable 227,364, so 52,364 to the variable party | [`0x21628c80…`](https://explorer.hiro.so/txid/0x21628c80d1ed59f02d2790cb69d4831a6171e923a007962ed456a649c7568cc2?chain=testnet) |
+| Close swap | 896,729 back to the fixed party, 503,271 to the variable party | [`0x98b0eab1…`](https://explorer.hiro.so/txid/0x98b0eab1868411af29cbbb015df0c8081a81c60f318b2f775cecb16f69a0cdb8?chain=testnet) |
+
+The close carried a post-condition allowing exactly 1,400,000 sats out of `rho-core-v4`, the total deposited. The variable party's mock sBTC balance went from 1,600,000 to 2,103,271: its 400,000 deposit plus 103,271 settled. This is the first swap opened through the site and the first with a non-deployer counterparty. The fixed side was still the deployer's seeded offer.
+
 ---
 
 ## Table of Contents
@@ -904,7 +922,7 @@ Not addressed by the current milestones.
 
 ### Testing used a single principal
 
-Both legs of the on-chain runs were signed by the same address. This exercises contract behaviour, not counterparty dynamics, price discovery, or adversarial participants.
+Swaps 1 and 2 had both legs signed by the deployer. Swap 3 had a non-deployer variable party, but the fixed side was still the deployer's seeded offer. None of this exercises price discovery or adversarial participants.
 
 ### Collateral is mock sBTC
 
