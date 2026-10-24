@@ -74,7 +74,7 @@ plan:
       path: contracts/mock-sbtc.clar
       clarity-version: 2
     - transaction-type: emulated-contract-publish
-      contract-name: pox-rate-oracle-trustless
+      contract-name: pox-rate-oracle-trustless-v2
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/pox-rate-oracle-trustless.clar
       clarity-version: 2
@@ -87,5 +87,10 @@ plan:
       contract-name: rho-core-v4
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/rho-core.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
+      contract-name: rho-core-v5
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/rho-core-v5.clar
       clarity-version: 2
     epoch: '4.0'
