@@ -29,13 +29,21 @@ All contracts are live and independently verifiable, deployed from `ST14V779KZH7
 | `mock-sbtc` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.mock-sbtc?chain=testnet) | [`ecf23cd2…`](https://explorer.hiro.so/txid/0xecf23cd2f3cd15904b5c8cd11bacea1f9b6eef3e814c0a25b71fb38a3161d82b?chain=testnet) |
 | `sip-010-trait` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.sip-010-trait?chain=testnet) | [`2f936d9b…`](https://explorer.hiro.so/txid/0x2f936d9b2d62a810cc8dbb29833fc81776d03fcda22ef806fbc451416d355001?chain=testnet) |
 
-**Trustless oracle — deployed, not yet wired into `rho-core`:**
+**Milestone 1 contract — `rho-core-v5`, test deployment:**
+
+| Contract | Explorer | Deployment tx |
+|----------|----------|---------------|
+| `rho-core-v5` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v5?chain=testnet) | [`0x61211c71…`](https://explorer.hiro.so/txid/0x61211c71e83d928208dbe79c3f6705a5dc11255b267a4b53b7b5d03eb518907e?chain=testnet) |
+
+`rho-core-v5` settles from the trustless oracle and adds two-sided variation margin with a 2× rate ceiling (see `contracts/rho-core-v5.clar` and [Ceiling and margin in v5](#ceiling-and-margin-in-v5)). This deployment predates a one-sat rounding fix that fuzz testing found (the per-cycle worst case is now rounded up), so the release version will be deployed under a new name. The website still uses `rho-core-v4`.
+
+**Trustless oracle:**
 
 | Contract | Explorer | Deployment tx |
 |----------|----------|---------------|
 | `pox-rate-oracle-trustless-v2` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.pox-rate-oracle-trustless-v2?chain=testnet) | [`fc10b5fb…`](https://explorer.hiro.so/txid/0xfc10b5fb30e19d9d6607af835d7428ea3b89b47525ab86dd02186845a01a5b64?chain=testnet) |
 
-`rho-core-v4` still reads `pox-rate-oracle-v2`. Pointing settlement at the trustless oracle needs a new core contract, which is Milestone 1 work. Verified on testnet on 2026-10-05 through the node's read-only interface: `get-cycle-rate` returns the rate for finished cycles 20, 24 and 25, each equal to PoX-5's own entry, and `none` for cycle 26, which was still running. The first version, `pox-rate-oracle-trustless`, is superseded: it treated PoX-5's per-cycle entry as a running total and exceeded the read budget on every real cycle. Details are in the contract header.
+`rho-core-v4` still reads `pox-rate-oracle-v2`; `rho-core-v5` reads the trustless oracle and has settled a real cycle from it (see [Swap 4](#swap-4--rho-core-v5-settled-by-the-trustless-oracle)). Verified on testnet on 2026-10-05 through the node's read-only interface: `get-cycle-rate` returns the rate for finished cycles 20, 24 and 25, each equal to PoX-5's own entry, and `none` for cycle 26, which was still running. The first version, `pox-rate-oracle-trustless`, is superseded: it treated PoX-5's per-cycle entry as a running total and exceeded the read budget on every real cycle. Details are in the contract header.
 
 ### Version history — three defects found and fixed
 
@@ -164,6 +172,21 @@ It settled on **2026-10-24**. `rho-core-v4` reads the admin oracle, so rates had
 | Close swap | 896,729 back to the fixed party, 503,271 to the variable party | [`0x98b0eab1…`](https://explorer.hiro.so/txid/0x98b0eab1868411af29cbbb015df0c8081a81c60f318b2f775cecb16f69a0cdb8?chain=testnet) |
 
 The close carried a post-condition allowing exactly 1,400,000 sats out of `rho-core-v4`, the total deposited. The variable party's mock sBTC balance went from 1,600,000 to 2,103,271: its 400,000 deposit plus 103,271 settled. This is the first swap opened through the site and the first with a non-deployer counterparty. The fixed side was still the deployer's seeded offer.
+
+### Swap 4 — `rho-core-v5`, settled by the trustless oracle
+
+The first settlement with no rate submitted by anyone. Both legs are wallets we control: the deployer, and a second account derived from the deployer's seed (`STJ15BTEJPGA7CHMG1YAWMVPNJH9NH4FBXPZFK6H`). It tests the mechanism, not demand.
+
+Terms: 100,000 STX notional, fixed 6,000,000, 1 cycle. Both sides deposited 660,000 sats: the per-cycle worst case of 600,000 plus 10%, which the contract checks. Accepted during testnet cycle 34, so the swap covered cycle 35, the next full cycle.
+
+| Step | Detail | Tx |
+|---|---|---|
+| Post offer | fixed side deposits 660,000 | [`0x12339f72…`](https://explorer.hiro.so/txid/0x12339f72af77f3543e81931d979b950b9a38dd9d8c1de4a47e539e27617af6aa?chain=testnet) |
+| Accept offer | variable side deposits 660,000; start cycle 35 | [`0x420b34ee…`](https://explorer.hiro.so/txid/0x420b34ee0a56b540b52c296b41a1eaf21123acaca047bf328737af80d528d903?chain=testnet) |
+| Settle cycle 35 | the oracle read PoX-5's entry, 6,093,802; fixed 600,000 / variable 609,380, so 9,380 moved to the variable side | [`0x79fba285…`](https://explorer.hiro.so/txid/0x79fba2850b128a2e2586ae4967c6184481e75a198ed76479be5d78c31f70198b?chain=testnet) |
+| Close swap | 650,620 back to the fixed side, 669,380 to the variable side | [`0xbe0a9f31…`](https://explorer.hiro.so/txid/0xbe0a9f311d44816fc0f43c0bf9e596eb5c86ad6058cc3c30266d98de225fa479?chain=testnet) |
+
+The close carried a post-condition allowing exactly 1,320,000 sats out of the contract, the total deposited. Settlement used a read_length of 165,319, inside a transaction's limits, including the PoX-5 read. The cycle was calm: the rate stayed near the fixed rate, so no margin call or liquidation was triggered. Those paths are covered by `tests/rho-core-v5.test.ts` and the randomized `tests/rho-core-v5.fuzz.test.ts` (1,200 swaps across four seeds, with no invariant broken).
 
 ---
 
@@ -863,6 +886,8 @@ Documented because a reader will find them anyway, and because they shape what t
 
 ### Margining is one-sided
 
+**Status:** applies to `rho-core-v4`, which the website still uses. Fixed in `rho-core-v5`: the settlement rate is capped at 2× the fixed rate, which gives the fixed party a known worst case per cycle equal to the variable party's. Both sides then post initial margin, are held to maintenance after every settlement, get a 144-block margin call to top up, and can be liquidated after it. See [Ceiling and margin in v5](#ceiling-and-margin-in-v5) below.
+
 The maintenance margin and automatic liquidation protect the **fixed** party only. The variable party has no equivalent protection, and the asymmetry runs the wrong way relative to risk:
 
 | | Maximum obligation | Margin requirement |
@@ -880,9 +905,13 @@ This is inherent to collateralising an obligation with no upper bound — you ca
 
 ### The oracle is trusted in Phase 1
 
+**Status:** applies to `rho-core-v4`. `rho-core-v5` settles from `pox-rate-oracle-trustless-v2`, which reads PoX-5 and accepts no submissions.
+
 Cycle rates are submitted by the contract deployer. The raw inputs are stored on chain so the derived rate is independently recomputable, but an admin could submit inputs that are internally consistent and still wrong. The replacement, `pox-rate-oracle-trustless-v2`, reads PoX-5's own Tranche 2 accounting instead of accepting submissions, and returns correct rates for finished testnet cycles. `rho-core-v4` does not use it yet; switching settlement to it, and confirming that a full `settle-cycle` stays within cost limits with it, is Milestone 1 work.
 
 ### Tranche 1 obligations are not yet read from chain
+
+**Status:** applies to the admin oracle. The trustless oracle doesn't need this input: PoX-5 already computes the Tranche 2 entry after paying bonds and the reserve, and the oracle reads that entry directly.
 
 The Genesis Bond obligation fed to the deployed oracle is still computed off chain and submitted by the contract owner, so this input is currently asserted rather than verified.
 
@@ -890,11 +919,15 @@ This is an implementation gap, not a protocol one. PoX-5 does expose the necessa
 
 ### The oracle owner cannot be changed
 
+**Status:** applies to `pox-rate-oracle-v2` and `rho-core-v4`. `rho-core-v5` and `pox-rate-oracle-trustless-v2` have no owner and no admin function, so there is no key to transfer, recover or lose; anyone can call every public function. The risk ends when the website moves to v5 and the admin oracle is retired.
+
 `pox-rate-oracle` sets `contract-owner` to `tx-sender` at deployment and provides no function to transfer it. If that key is lost, no further cycle rates can ever be submitted. Every active swap then becomes unsettleable, and because `close-swap` requires all cycles settled, collateral in those swaps would be stranded.
 
 There is no recovery path in the current contract. The mitigation is operational: deploy from a key with a custody model appropriate to the value at risk. An owner transfer and recovery path is Milestone 1 work, delivered before mainnet.
 
 ### Deposits are not capped
+
+**Status:** applies to `rho-core-v4`. In `rho-core-v5`, a deposit or top-up may not take a side above the full-term worst case plus 10%, so what a party puts in is bounded by the notional and rate caps (the rate cap is also lowered to 20,000,000). Settlement winnings are not capped.
 
 The pilot caps bound swap **size**, and through it the size of each cycle's payments. They do not bound **deposits**. `post-offer` and `accept-offer` require collateral above zero and set no upper limit, so the total collateral held by `rho-core` is unbounded.
 
@@ -903,6 +936,8 @@ This matters because collateral is what a contract defect puts at risk. The liqu
 Not addressed by the current milestones.
 
 ### Swap slots can be occupied for almost nothing
+
+**Status:** applies to `rho-core-v4`. `rho-core-v5` requires a 10,000 STX minimum, a fixed rate that produces a non-zero payment, initial margin on both sides, and rejects accepting your own offer. Filling all 25 slots now costs real collateral, though one person using two wallets still can't be detected.
 
 The 25-swap cap is shared by everyone and tracked in aggregate; the contract does not record who holds which swaps. Nothing sets a minimum size, a minimum fixed rate, or a minimum deposit beyond 1 sat, and nothing prevents a wallet from accepting its own offer.
 
@@ -914,15 +949,25 @@ Not addressed by the current milestones.
 
 ### Initial margin is not checked in the contract
 
+**Status:** applies to `rho-core-v4`. `rho-core-v5` checks initial margin in both `post-offer` and `accept-offer`.
+
 `accept-offer` requires only that the variable party's deposit is above zero. The 110% requirement is enforced by the frontend at acceptance, and by the contract only after a cycle in which the variable party pays. Anyone calling the contract directly can open an under-collateralised swap.
 
 For a multi-cycle swap, the first adverse settlement that leaves the deposit below the requirement for the remaining cycles liquidates it. That protects the fixed party's collateral but ends their hedge early. For a single-cycle swap, or the final cycle of any swap, no cycles remain to protect, so the margin check has nothing to enforce: if the variable party's deposit is short, the fixed party absorbs the difference.
 
 Not addressed by the current milestones.
 
+### Ceiling and margin in v5
+
+The 2× ceiling bounds the fixed side's risk by capping the variable side's upside: if PoX pays more than twice the fixed rate in a cycle, the variable side receives only up to 2×. Margin covers the next two cycles of worst case, not the whole term, so a side can be margin-called more than once over a long swap.
+
+Settlement, margin calls and liquidation all need someone to call them. Anyone may, but there is no keeper and no reward for doing it; in practice the counterparty is the one with a reason to. A margin call that nobody liquidates simply stays open, and the next settlement still pays from whatever collateral remains.
+
+The trustless oracle reports what PoX-5 credited to a cycle. If nobody calls PoX-5's `calculate-rewards` during the first half of the next cycle, part of a cycle's rewards is credited to the following one, and the earlier cycle settles low. Every stacker's payout follows the same attribution.
+
 ### Testing used a single principal
 
-Swaps 1 and 2 had both legs signed by the deployer. Swap 3 had a non-deployer variable party, but the fixed side was still the deployer's seeded offer. None of this exercises price discovery or adversarial participants.
+Swaps 1 and 2 had both legs signed by the deployer. Swap 3 had a non-deployer variable party, but the fixed side was still the deployer's seeded offer. Swap 4 used two wallets we control. None of this exercises price discovery or adversarial participants.
 
 ### Collateral is mock sBTC
 
