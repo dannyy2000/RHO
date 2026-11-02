@@ -23,8 +23,8 @@ const faqs = [
     a: "A contract between two parties where one always pays a fixed rate and the other always pays the floating (actual) rate on the same notional amount. Only the difference between the two payments moves each period — nobody exchanges the full notional. One party gets certainty. The other gets exposure to rate movement.",
   },
   {
-    q: "What is the oracle and why is it needed?",
-    a: "The Rho smart contract cannot automatically read Bitcoin transaction data. The oracle is the bridge — each cycle it posts the raw inputs: total BTC paid by miners, the amount owed to Genesis Bond holders ahead of stackers, and total STX stacked. The contract derives the stacker rate from those inputs itself, so the submitted numbers can be checked against the formula rather than taken on trust. Today the Rho team runs this oracle. Its replacement reads the stacker rate straight from PoX-5's own accounting, so nobody submits anything. It is live on testnet and is being connected to settlement.",
+    q: "Where does the rate come from?",
+    a: "From PoX-5 itself. PoX-5 records, for every cycle, how much BTC STX-only stackers earned per STX after the bonds and the reserve are paid. Rho's trustless oracle reads that number once the cycle can no longer change, and settlement uses it directly. Nobody submits rates and nobody can change them.",
   },
   {
     q: "What is sBTC?",
@@ -32,11 +32,11 @@ const faqs = [
   },
   {
     q: "What happens if collateral runs out?",
-    a: "Rho enforces a maintenance margin — the variable party's collateral must stay above 110% of their remaining obligation at all times. If a settlement pushes them below that threshold, that same settlement liquidates the position and returns the remaining collateral to both parties. The fixed party's collateral is not margin-checked yet; two-sided margin is the next contract upgrade.",
+    a: "Both sides are margined. The rate used for settlement is capped at 2× the fixed rate, so either side can owe at most one fixed payment per cycle. Each side deposits at least two cycles of that worst case plus 10%, and must keep two cycles of it after every settlement. Fall below and you get a margin call with about 144 Bitcoin blocks to top up; miss it and anyone can liquidate the swap, with one cycle of worst case going to the other side.",
   },
   {
     q: "Do I need to take action every cycle?",
-    a: "No. Settlement is permissionless: once a cycle's rate is available, anyone can settle it, including either party. During the testnet pilot the Rho team submits rates and runs settlement; it is not automated yet. You only need to act to close the swap after all cycles complete.",
+    a: "No. Once a cycle's rate is final, anyone can settle it, including either party, from the dashboard. You only need to act if you get a margin call, and to close the swap after the last cycle.",
   },
 ];
 
@@ -160,17 +160,17 @@ export default function HomePage() {
                 {
                   step: "02",
                   title: "Variable party accepts",
-                  body: "Deposits their own sBTC collateral (must cover 110% of remaining obligation). A live swap is created starting from the current PoX cycle.",
+                  body: "Deposits their own sBTC collateral, checked by the contract: at least two cycles of worst case plus 10%. The swap starts at the next full PoX cycle.",
                 },
                 {
                   step: "03",
-                  title: "Oracle posts the cycle rate",
-                  body: "After each two-week cycle completes, the oracle submits the BTC paid by miners and the total STX stacked. The contract calculates the rate — the oracle cannot manipulate the math.",
+                  title: "PoX-5 reports the cycle rate",
+                  body: "Once a cycle can no longer change, the trustless oracle reads the stacker rate from PoX-5's own accounting. Nobody submits it.",
                 },
                 {
                   step: "04",
                   title: "Contract settles automatically",
-                  body: "Anyone can trigger settlement. The contract compares fixed vs actual rate on the notional, moves only the difference between collateral balances, and checks the variable party's margin.",
+                  body: "Anyone can trigger settlement. The contract compares the fixed rate with the actual rate (capped at 2× fixed), moves only the difference between collateral balances, and checks both sides' margin.",
                 },
                 {
                   step: "05",
@@ -206,10 +206,10 @@ export default function HomePage() {
                 <div className="bg-white rounded-xl border border-slate-200 p-5">
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Rate formula</p>
                   <code className="block text-sm font-mono text-slate-900 mb-2">
-                    rate = tranche_2_pool_sats × 1e12<br />
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;÷ total_ustx_stacked
+                    rate = PoX-5 Tranche 2 rewards per uSTX<br />
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;× 1e12 ÷ 1e18
                   </code>
-                  <p className="text-xs text-slate-400">Sats earned per 1,000,000 uSTX stacked per cycle.</p>
+                  <p className="text-xs text-slate-400">Sats earned per 1,000,000 STX stacked per cycle, read from PoX-5.</p>
                 </div>
                 <div className="bg-white rounded-xl border border-slate-200 p-5">
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Settlement formula</p>
@@ -226,51 +226,51 @@ export default function HomePage() {
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-5">Worked example</h3>
               <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
                 <div className="px-6 py-4 bg-slate-50 border-b border-slate-200">
-                  <p className="text-sm font-semibold text-slate-700">Fixed rate: 500,000 · Notional: 1,000,000 STX</p>
+                  <p className="text-sm font-semibold text-slate-700">Fixed rate: 850,000 · Notional: 1,000,000 STX · fixed payment 850,000 sats</p>
                 </div>
                 <div className="divide-y divide-slate-100">
                   <div className="px-6 py-5">
                     <div className="flex items-start justify-between gap-4 mb-3">
                       <div>
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Cycle A — miners compete hard</p>
-                        <p className="text-sm text-slate-700">Actual rate: <span className="font-mono font-bold">679,497</span></p>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Mainnet cycle 142</p>
+                        <p className="text-sm text-slate-700">Actual rate: <span className="font-mono font-bold">909,456</span></p>
                       </div>
                       <span className="flex-shrink-0 text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full">Variable wins</span>
                     </div>
                     <div className="grid grid-cols-2 gap-3 text-xs">
                       <div className="bg-slate-50 rounded-lg p-3">
-                        <p className="text-slate-400 mb-1">Fixed payment owed</p>
-                        <p className="font-mono font-bold text-slate-800">800 sats</p>
+                        <p className="text-slate-400 mb-1">Fixed party pays</p>
+                        <p className="font-mono font-bold text-slate-800">-59,456 sats</p>
                       </div>
                       <div className="bg-slate-50 rounded-lg p-3">
                         <p className="text-slate-400 mb-1">Variable receives</p>
-                        <p className="font-mono font-bold text-slate-800">+200 sats net</p>
+                        <p className="font-mono font-bold text-slate-800">+59,456 sats</p>
                       </div>
                     </div>
                   </div>
                   <div className="px-6 py-5">
                     <div className="flex items-start justify-between gap-4 mb-3">
                       <div>
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Cycle B — miners pull back</p>
-                        <p className="text-sm text-slate-700">Actual rate: <span className="font-mono font-bold">465,831</span></p>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Mainnet cycle 141</p>
+                        <p className="text-sm text-slate-700">Actual rate: <span className="font-mono font-bold">758,607</span></p>
                       </div>
                       <span className="flex-shrink-0 text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-full">Fixed wins</span>
                     </div>
                     <div className="grid grid-cols-2 gap-3 text-xs">
                       <div className="bg-slate-50 rounded-lg p-3">
                         <p className="text-slate-400 mb-1">Fixed receives top-up</p>
-                        <p className="font-mono font-bold text-slate-800">+250 sats net</p>
+                        <p className="font-mono font-bold text-slate-800">+91,393 sats</p>
                       </div>
                       <div className="bg-slate-50 rounded-lg p-3">
                         <p className="text-slate-400 mb-1">Variable pays gap</p>
-                        <p className="font-mono font-bold text-slate-800">-250 sats</p>
+                        <p className="font-mono font-bold text-slate-800">-91,393 sats</p>
                       </div>
                     </div>
                   </div>
                 </div>
                 <div className="px-6 py-4 bg-amber-50 border-t border-amber-100">
                   <p className="text-xs text-amber-800">
-                    In both cycles the fixed party nets exactly <strong>800 sats</strong> — their agreed rate — regardless of what miners paid.
+                    In both cycles the fixed party nets exactly <strong>850,000 sats</strong> (stacking rewards plus or minus the swap payment), whatever PoX-5 paid.
                   </p>
                 </div>
               </div>

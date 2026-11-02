@@ -1,15 +1,14 @@
 import { fetchCallReadOnlyFunction, cvToValue, uintCV } from "@stacks/transactions";
-import { NETWORK, CONTRACTS } from "./stacks";
+import { NETWORK, CONTRACTS, API_URL } from "./stacks";
 
-const [CORE_ADDR, CORE_NAME] = CONTRACTS.core.split(".") as [string, string];
-
-async function readOnly(functionName: string, functionArgs: any[] = []) {
+async function readOnly(functionName: string, functionArgs: any[] = [], contract = CONTRACTS.core) {
+  const [addr, name] = contract.split(".") as [string, string];
   const cv = await fetchCallReadOnlyFunction({
-    contractAddress: CORE_ADDR,
-    contractName: CORE_NAME,
+    contractAddress: addr,
+    contractName: name,
     functionName,
     functionArgs,
-    senderAddress: CORE_ADDR,
+    senderAddress: addr,
     network: NETWORK,
   });
   return cvToValue(cv, true);
@@ -36,6 +35,8 @@ export type Swap = {
   cyclesSettled: number;
   fixedCollateral: number;
   variableCollateral: number;
+  fixedCallDeadline: number;     // burn height; 0 = no margin call open
+  variableCallDeadline: number;
   status: number;
 };
 
@@ -93,6 +94,8 @@ export async function fetchSwaps(): Promise<Swap[]> {
         cyclesSettled: n(w["cycles-settled"]),
         fixedCollateral: n(w["fixed-collateral"]),
         variableCollateral: n(w["variable-collateral"]),
+        fixedCallDeadline: n(w["fixed-call-deadline"]),
+        variableCallDeadline: n(w["variable-call-deadline"]),
         status: n(w["status"]),
       } as Swap;
     })
@@ -124,6 +127,8 @@ export async function fetchCurrentCycle(): Promise<number> {
 export type Settlement = {
   swapId: number;
   cycle: number;
+  actualRate: number;
+  settlementRate: number;
   fixedPayment: number;
   variablePayment: number;
   settledAt: number;
@@ -140,6 +145,8 @@ export async function fetchSettlements(swap: Swap): Promise<Settlement[]> {
       return {
         swapId: swap.id,
         cycle,
+        actualRate: n(r["actual-rate"]),
+        settlementRate: n(r["settlement-rate"]),
         fixedPayment: n(r["fixed-payment"]),
         variablePayment: n(r["variable-payment"]),
         settledAt: n(r["settled-at"]),
@@ -147,4 +154,35 @@ export async function fetchSettlements(swap: Swap): Promise<Settlement[]> {
     })
   );
   return rows.filter((r): r is Settlement => r !== null);
+}
+
+/** The trustless oracle's rate for a cycle, or null until PoX-5 can no longer credit it. */
+export async function fetchCycleRate(cycle: number): Promise<number | null> {
+  const raw = await readOnly("get-cycle-rate", [uintCV(cycle)], CONTRACTS.oracle);
+  if (!raw) return null;
+  return n(unwrap(raw)["rate-sats-per-mstx"]);
+}
+
+/** Current Bitcoin (burn) block height, used for margin-call deadlines. */
+export async function fetchBurnHeight(): Promise<number> {
+  const info = await (await fetch(`${API_URL}/v2/info`)).json();
+  return Number(info.burn_block_height);
+}
+
+export type TxOutcome = { ok: boolean; result: string };
+
+/** Polls the API until a broadcast transaction is mined, then reports its result. */
+export async function waitForTx(txid: string, everyMs = 10_000): Promise<TxOutcome> {
+  const id = txid.startsWith("0x") ? txid : `0x${txid}`;
+  for (;;) {
+    try {
+      const tx = await (await fetch(`${API_URL}/extended/v1/tx/${id}`)).json();
+      if (tx.tx_status && tx.tx_status !== "pending") {
+        return { ok: tx.tx_status === "success", result: tx.tx_result?.repr ?? tx.tx_status };
+      }
+    } catch {
+      // Not indexed yet, or a network blip: keep polling.
+    }
+    await new Promise((r) => setTimeout(r, everyMs));
+  }
 }
