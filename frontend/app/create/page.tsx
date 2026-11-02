@@ -5,27 +5,33 @@ import Link from "next/link";
 import { useWallet } from "@/components/WalletProvider";
 import { NETWORK, CONTRACTS } from "@/lib/stacks";
 import FAQAccordion from "@/components/FAQAccordion";
+import { USTX_PER_STX, fixedPayment, worstCasePerCycle, initialMargin, maxCollateral,
+         offerErrors, fmt } from "@/lib/margin";
 
 const faqs = [
   {
     q: "What is notional?",
-    a: "Notional is the reference amount used to calculate payments — similar to the face value of a bond. It never actually moves between wallets. Payments are calculated each cycle as: notional × rate ÷ 1e12. A notional of 1,000,000 STX at a rate of 500,000 = 500,000 sats per cycle.",
+    a: "Notional is the reference amount used to calculate payments, like the face value of a bond. It never moves between wallets. Each cycle's payment is notional × rate ÷ 1,000,000 STX. A notional of 100,000 STX at a rate of 6,000,000 is a payment of 600,000 sats per cycle.",
   },
   {
     q: "How do I choose the right fixed rate?",
-    a: "Look at recent PoX cycles on the Stacks Explorer to see where rates have been sitting. Set your rate slightly below recent averages for an easy fill, or at the current rate for full protection. Recent cycles have settled near 465,000–680,000. If you set it too high, the offer may sit unfilled.",
+    a: "Look at what recent cycles have paid. On testnet, PoX-5 has been paying around 6,000,000 sats per 1M STX per cycle; on mainnet, around 750,000–910,000. A rate near recent cycles gives the variable side a fair bet, so it is more likely to be accepted.",
   },
   {
-    q: "Why is there a recommended collateral amount?",
-    a: "Your collateral must be large enough to cover what you might owe the variable party if the actual PoX rate beats your fixed rate every cycle for the full duration. We suggest 150% of the maximum obligation as a buffer.",
+    q: "How much do I have to deposit?",
+    a: "At least 110% of two cycles of your worst case. The rate used for settlement is capped at 2× your fixed rate, so in one cycle you can owe at most one fixed payment. You may deposit up to 110% of the whole swap's worst case. Both sides follow the same rule.",
+  },
+  {
+    q: "What if a cycle goes against me?",
+    a: "After every settlement, each side must still hold at least two cycles of worst case (or what is left, if fewer). If you fall below, you get a margin call and about 144 Bitcoin blocks (roughly a day on mainnet) to top up from your dashboard. If you don't, anyone can liquidate the swap and you lose one cycle of worst case to the other side.",
   },
   {
     q: "What is a PoX cycle?",
-    a: "One cycle is approximately two weeks — 2,100 Bitcoin blocks. PoX yield is distributed once per cycle. A swap with a duration of 3 cycles runs for roughly 6 weeks.",
+    a: "On mainnet a cycle is about two weeks (2,100 Bitcoin blocks). On testnet it is about 2.5 days (900 blocks). A swap starts at the next full cycle after it is accepted.",
   },
   {
     q: "Can I cancel after posting?",
-    a: "Yes — as long as the offer has not been accepted by a variable party. Go to your Dashboard and cancel it. Your full collateral is returned immediately.",
+    a: "Yes, as long as nobody has accepted it. Cancel it from your dashboard and your deposit is returned.",
   },
 ];
 
@@ -39,16 +45,22 @@ export default function CreatePage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  const n = parseInt(notional) || 0;
-  const r = parseInt(rate) || 0;
-  const d = parseInt(duration) || 0;
-  const c = parseInt(collateral) || 0;
+  const toBig = (v: string) => (/^\d+$/.test(v.trim()) ? BigInt(v.trim()) : BigInt(0));
+  const nStx = toBig(notional);
+  const n = nStx * USTX_PER_STX;                 // the contract takes uSTX
+  const r = toBig(rate);
+  const d = toBig(duration);
+  const c = toBig(collateral);
+  const termsEntered = nStx > BigInt(0) && r > BigInt(0) && d > BigInt(0);
 
-  const fixedPaymentPerCycle = n && r ? Math.floor((n * r) / 1_000_000_000_000) : null;
-  const totalFixedObligation = fixedPaymentPerCycle && d ? fixedPaymentPerCycle * d : null;
-  const recommendedCollateral = totalFixedObligation ? Math.ceil(totalFixedObligation * 1.5) : null;
-
-  const isValid = n > 0 && r > 0 && d > 0 && c > 0;
+  const errors = termsEntered ? offerErrors(n, r, d) : [];
+  const termsOk = termsEntered && errors.length === 0;
+  const perCycle = termsOk ? fixedPayment(n, r) : null;
+  const worst = termsOk ? worstCasePerCycle(n, r) : null;
+  const minDeposit = termsOk ? initialMargin(n, r, d) : null;
+  const maxDeposit = termsOk ? maxCollateral(n, r, d) : null;
+  const depositOk = minDeposit !== null && maxDeposit !== null && c >= minDeposit && c <= maxDeposit;
+  const isValid = termsOk && depositOk;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -123,20 +135,20 @@ export default function CreatePage() {
 
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-2">
-                Notional amount <span className="text-slate-400 normal-case font-normal tracking-normal">(uSTX — never moves)</span>
+                Notional amount <span className="text-slate-400 normal-case font-normal tracking-normal">(STX — never moves)</span>
               </label>
               <input
                 type="number"
-                min={1}
-                max={1000000000000}
+                min={10000}
+                max={1000000}
                 value={notional}
                 onChange={(e) => setNotional(e.target.value)}
-                placeholder="10000000"
+                placeholder="100000"
                 className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
               />
               <p className="text-xs text-slate-400 mt-2">
-                The reference value used to calculate payments. 1,000,000 uSTX = 1 STX. This never actually moves.
-                Pilot cap: 1,000,000,000,000 uSTX (1M STX) per swap.
+                The reference amount used to calculate payments. It never moves.
+                Between 10,000 and 1,000,000 STX per swap.
               </p>
             </div>
 
@@ -147,20 +159,20 @@ export default function CreatePage() {
               <input
                 type="number"
                 min={1}
-                max={1000000000}
+                max={20000000}
                 value={rate}
                 onChange={(e) => setRate(e.target.value)}
-                placeholder="500000"
+                placeholder="6000000"
                 className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
               />
               <p className="text-xs text-slate-400 mt-2">
-                The BTC yield you want to lock in. Recent PoX-5 cycles have settled near 465,000–680,000 on this basis. Check the Stacks Explorer for the latest.
+                The BTC yield you want to lock in. Testnet PoX-5 has been paying around 6,000,000 on this basis; mainnet around 750,000–910,000. Maximum 20,000,000.
               </p>
             </div>
 
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-2">
-                Duration <span className="text-slate-400 normal-case font-normal tracking-normal">(PoX cycles — 1 cycle ≈ 2 weeks)</span>
+                Duration <span className="text-slate-400 normal-case font-normal tracking-normal">(PoX cycles — ~2 weeks on mainnet, ~2.5 days on testnet)</span>
               </label>
               <input
                 type="number"
@@ -172,8 +184,7 @@ export default function CreatePage() {
                 className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
               />
               <p className="text-xs text-slate-400 mt-2">
-                {d > 0 ? `${d} cycle${d > 1 ? "s" : ""} = ~${d * 2} weeks.` : "How many cycles this swap runs before closing."}
-                {" "}Pilot cap: 13 cycles (~6 months).
+                How many cycles the swap runs, starting at the next full cycle. Maximum 13.
               </p>
             </div>
 
@@ -183,17 +194,28 @@ export default function CreatePage() {
               </label>
               <input
                 type="number"
-                min={1}
+                min={minDeposit !== null ? String(minDeposit) : "1"}
+                max={maxDeposit !== null ? String(maxDeposit) : undefined}
                 value={collateral}
                 onChange={(e) => setCollateral(e.target.value)}
-                placeholder={recommendedCollateral ? String(recommendedCollateral) : "500000"}
+                placeholder={minDeposit !== null ? String(minDeposit) : "Enter the terms above first"}
                 className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
               />
               <p className="text-xs text-slate-400 mt-2">
-                {recommendedCollateral
-                  ? `Recommended: ${recommendedCollateral.toLocaleString()} sats (150% of max obligation).`
+                {minDeposit !== null && maxDeposit !== null
+                  ? `Between ${fmt(minDeposit)} and ${fmt(maxDeposit)} sats. The minimum covers two cycles of your worst case plus 10%.`
                   : "Locked in the contract. Returned when the swap closes."}
               </p>
+              {minDeposit !== null && collateral === "" && (
+                <button type="button" onClick={() => setCollateral(String(minDeposit))}
+                  className="text-xs text-slate-600 underline mt-1">Use the minimum ({fmt(minDeposit)} sats)</button>
+              )}
+              {errors.length > 0 && (
+                <ul className="text-xs text-red-600 mt-3 space-y-1">{errors.map((er) => <li key={er}>{er}</li>)}</ul>
+              )}
+              {termsOk && collateral !== "" && !depositOk && (
+                <p className="text-xs text-red-600 mt-3">The deposit must be between {fmt(minDeposit!)} and {fmt(maxDeposit!)} sats.</p>
+              )}
             </div>
 
             <button
@@ -212,10 +234,11 @@ export default function CreatePage() {
             <div className="bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden">
               <div className="divide-y divide-slate-200">
                 {[
-                  { label: "Fixed payment / cycle", value: fixedPaymentPerCycle !== null ? `${fixedPaymentPerCycle.toLocaleString()} sats` : "—" },
-                  { label: "Total fixed obligation", value: totalFixedObligation !== null ? `${totalFixedObligation.toLocaleString()} sats` : "—" },
-                  { label: "Duration", value: d > 0 ? `${d} cycle${d > 1 ? "s" : ""} (~${d * 2}w)` : "—" },
-                  { label: "Recommended collateral", value: recommendedCollateral !== null ? `${recommendedCollateral.toLocaleString()} sats` : "—" },
+                  { label: "Fixed payment / cycle", value: perCycle !== null ? `${fmt(perCycle)} sats` : "—" },
+                  { label: "Most either side can owe in a cycle", value: worst !== null ? `${fmt(worst)} sats` : "—" },
+                  { label: "Rate counts as at most", value: termsOk ? `${fmt(r * BigInt(2))} (2× fixed)` : "—" },
+                  { label: "Minimum deposit", value: minDeposit !== null ? `${fmt(minDeposit)} sats` : "—" },
+                  { label: "Maximum deposit", value: maxDeposit !== null ? `${fmt(maxDeposit)} sats` : "—" },
                 ].map((row) => (
                   <div key={row.label} className="flex justify-between items-center px-5 py-3.5">
                     <span className="text-xs text-slate-500">{row.label}</span>
@@ -227,7 +250,7 @@ export default function CreatePage() {
               </div>
               <div className="bg-amber-50 border-t border-amber-100 px-5 py-4">
                 <p className="text-xs text-amber-800 leading-relaxed">
-                  When actual rate &gt; fixed rate → variable party pockets the excess. When actual rate &lt; fixed rate → variable party tops you up. You always net your fixed rate.
+                  When the actual rate is above your fixed rate, you pay the difference (counted up to 2× fixed). When it is below, the variable party pays you. Either way you net your fixed rate.
                 </p>
               </div>
             </div>
@@ -241,7 +264,7 @@ export default function CreatePage() {
                 </div>
                 <div className="flex gap-2">
                   <span className="w-4 h-4 rounded-full bg-slate-100 flex-shrink-0 flex items-center justify-center text-slate-400 font-bold">2</span>
-                  <p>Adjusts each cycle based on who won the settlement.</p>
+                  <p>Adjusts each cycle based on who won the settlement. If it drops below two cycles of worst case, top it up from your dashboard.</p>
                 </div>
                 <div className="flex gap-2">
                   <span className="w-4 h-4 rounded-full bg-slate-100 flex-shrink-0 flex items-center justify-center text-slate-400 font-bold">3</span>

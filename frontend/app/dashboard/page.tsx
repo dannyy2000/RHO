@@ -1,28 +1,22 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useWallet } from "@/components/WalletProvider";
-import { CONTRACTS } from "@/lib/stacks";
-import { fetchSwaps, fetchOpenOffers, fetchSettlements,
+import { NETWORK, CONTRACTS } from "@/lib/stacks";
+import { fetchSwaps, fetchOpenOffers, fetchSettlements, fetchCycleRate, fetchBurnHeight,
          type Swap, type Offer, type Settlement } from "@/lib/contract";
+import { maintenanceMargin, maxCollateral, ustxToStx, fmt } from "@/lib/margin";
 
 const STATUS = ["Active", "Completed", "Liquidated"] as const;
 
-function fmt(n: number) {
-  return n.toLocaleString();
-}
-
-function Badge({ text, color }: { text: string; color: "green" | "amber" | "slate" }) {
+function Badge({ text, color }: { text: string; color: "green" | "amber" | "slate" | "red" }) {
   const cls = {
     green: "bg-green-50 text-green-700 border-green-200",
     amber: "bg-amber-50 text-amber-700 border-amber-200",
     slate: "bg-slate-100 text-slate-600 border-slate-200",
+    red: "bg-red-50 text-red-700 border-red-200",
   }[color];
-  return (
-    <span className={`text-xs font-medium border px-2 py-0.5 rounded ${cls}`}>
-      {text}
-    </span>
-  );
+  return <span className={`text-xs font-medium border px-2 py-0.5 rounded ${cls}`}>{text}</span>;
 }
 
 function ConnectPrompt({ onConnect }: { onConnect: () => void }) {
@@ -30,171 +24,232 @@ function ConnectPrompt({ onConnect }: { onConnect: () => void }) {
     <div className="border border-slate-200 rounded-lg p-10 text-center max-w-sm mx-auto mt-16">
       <h2 className="text-base font-semibold text-slate-900 mb-2">Connect your wallet</h2>
       <p className="text-sm text-slate-500 mb-5">
-        Connect with Xverse or Leather to view your active positions and open offers.
+        Connect with Xverse or Leather to view your positions and open offers.
       </p>
-      <button
-        onClick={onConnect}
-        className="bg-slate-900 text-white text-sm font-medium px-5 py-2 rounded-md hover:bg-slate-700 transition-colors"
-      >
+      <button onClick={onConnect}
+        className="bg-slate-900 text-white text-sm font-medium px-5 py-2 rounded-md hover:bg-slate-700 transition-colors">
         Connect wallet
       </button>
     </div>
   );
 }
 
+type Row = {
+  swap: Swap;
+  role: "Fixed" | "Variable";
+  nextCycle: number;
+  nextRateReady: boolean;
+  myCollateral: number;
+  myDeadline: number;
+  otherDeadline: number;
+  shortfall: number;   // sats this wallet must add to clear its call
+};
+
+const btn = "text-xs font-medium px-3 py-1.5 rounded transition-colors disabled:opacity-40";
+
 export default function DashboardPage() {
   const { connected, address, connect } = useWallet();
-  const [swaps, setSwaps] = useState<Swap[] | null>(null);
+  const [rows, setRows] = useState<Row[] | null>(null);
   const [offers, setOffers] = useState<Offer[] | null>(null);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
+  const [height, setHeight] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!connected || !address) return;
-    let live = true;
-    (async () => {
-      try {
-        const [allSwaps, allOffers] = await Promise.all([fetchSwaps(), fetchOpenOffers()]);
-        const mine = allSwaps.filter(
-          (w) => w.fixedParty === address || w.variableParty === address);
-        if (!live) return;
-        setSwaps(mine);
-        setOffers(allOffers.filter((o) => o.fixedParty === address));
-        const rows = await Promise.all(mine.map(fetchSettlements));
-        if (live) setSettlements(rows.flat().sort((a, b) => b.cycle - a.cycle));
-      } catch (e: any) {
-        if (live) setLoadError(String(e?.message ?? e));
-      }
-    })();
-    return () => { live = false; };
-  }, [connected, address]);
+  const load = useCallback(async () => {
+    if (!address) return;
+    try {
+      const [allSwaps, allOffers, h] = await Promise.all([fetchSwaps(), fetchOpenOffers(), fetchBurnHeight()]);
+      const mine = allSwaps.filter((w) => w.fixedParty === address || w.variableParty === address);
+      const built = await Promise.all(mine.map(async (w): Promise<Row> => {
+        const role = w.fixedParty === address ? "Fixed" : "Variable";
+        const nextCycle = w.startCycle + w.cyclesSettled;
+        const nextRateReady = w.status === 0 && w.cyclesSettled < w.durationCycles
+          && (await fetchCycleRate(nextCycle)) !== null;
+        const myCollateral = role === "Fixed" ? w.fixedCollateral : w.variableCollateral;
+        const myDeadline = role === "Fixed" ? w.fixedCallDeadline : w.variableCallDeadline;
+        const otherDeadline = role === "Fixed" ? w.variableCallDeadline : w.fixedCallDeadline;
+        const N = BigInt(w.notionalUstx), F = BigInt(w.fixedRate);
+        const required = maintenanceMargin(N, F, BigInt(w.durationCycles - w.cyclesSettled));
+        const room = maxCollateral(N, F, BigInt(w.durationCycles)) - BigInt(myCollateral);
+        let need = required - BigInt(myCollateral);
+        if (need < BigInt(0)) need = BigInt(0);
+        if (need > room) need = room > BigInt(0) ? room : BigInt(0);
+        return { swap: w, role, nextCycle, nextRateReady, myCollateral, myDeadline, otherDeadline, shortfall: Number(need) };
+      }));
+      setRows(built);
+      setOffers(allOffers.filter((o) => o.fixedParty === address));
+      setHeight(h);
+      const hist = await Promise.all(mine.map(fetchSettlements));
+      setSettlements(hist.flat().sort((a, b) => b.cycle - a.cycle));
+      setLoadError(null);
+    } catch (e: any) {
+      setLoadError(String(e?.message ?? e));
+    }
+  }, [address]);
 
-  const activeSwaps = (swaps ?? []).filter((w) => w.status === 0);
-  const totalNotional = (swaps ?? []).reduce((t, w) => t + w.notionalUstx, 0);
-  const loading = connected && swaps === null && !loadError;
+  useEffect(() => { if (connected) load(); }, [connected, load]);
+
+  // Every call names the exact sBTC that may move, or the wallet's default
+  // deny mode aborts it.
+  async function call(label: string, functionName: string, args: number[],
+                      pc: { from: "me" | "contract"; amount: number; exact: boolean }) {
+    setBusy(label);
+    setNotice(null);
+    try {
+      const { request } = await import("@stacks/connect");
+      const { uintCV, Pc } = await import("@stacks/transactions");
+      const who = Pc.principal(pc.from === "me" ? address! : CONTRACTS.core);
+      const cond = (pc.exact ? who.willSendEq(pc.amount) : who.willSendLte(pc.amount)).ft(CONTRACTS.sbtc, "mock-sbtc");
+      await request("stx_callContract", {
+        contract: CONTRACTS.core,
+        functionName,
+        functionArgs: args.map((a) => uintCV(a)),
+        network: NETWORK,
+        postConditionMode: "deny",
+        postConditions: [cond],
+      });
+      setNotice(`${label}: transaction submitted. It can take a few minutes to confirm; press Refresh after that.`);
+    } catch {
+      setNotice(null);
+    } finally {
+      setBusy(null);
+    }
+  }
 
   if (!connected) {
     return (
       <div className="max-w-6xl mx-auto px-6 py-12">
         <h1 className="text-3xl font-semibold text-slate-900 mb-2">Dashboard</h1>
-        <p className="text-sm text-slate-500 mb-6">Your active swaps, open offers, and settlement history.</p>
+        <p className="text-sm text-slate-500 mb-6">Your swaps, open offers, and settlement history.</p>
         <ConnectPrompt onConnect={connect} />
       </div>
     );
   }
 
+  const active = (rows ?? []).filter((r) => r.swap.status === 0);
+  const loading = rows === null && !loadError;
+
   return (
     <div className="max-w-6xl mx-auto px-6 py-12 space-y-14">
 
-      <div>
-        <h1 className="text-3xl font-semibold text-slate-900 mb-1">Dashboard</h1>
-        <p className="text-sm text-slate-400 font-mono">{address}</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-semibold text-slate-900 mb-1">Dashboard</h1>
+          <p className="text-sm text-slate-400 font-mono break-all">{address}</p>
+        </div>
+        <button onClick={() => load()} className="text-sm border border-slate-200 rounded-md px-3 py-1.5 hover:bg-slate-50">
+          Refresh
+        </button>
       </div>
 
-      {/* Summary cards */}
+      {notice && (
+        <div className="border border-green-200 bg-green-50 text-green-800 text-sm rounded-lg px-4 py-3">{notice}</div>
+      )}
+
       <div className="grid sm:grid-cols-3 gap-4">
         <div className="border border-slate-200 rounded-lg p-5">
           <p className="text-xs text-slate-400 uppercase tracking-widest font-semibold mb-1">Active swaps</p>
-          <p className="text-3xl font-semibold text-slate-900">{activeSwaps.length}</p>
+          <p className="text-3xl font-semibold text-slate-900">{active.length}</p>
         </div>
         <div className="border border-slate-200 rounded-lg p-5">
           <p className="text-xs text-slate-400 uppercase tracking-widest font-semibold mb-1">Open offers</p>
           <p className="text-3xl font-semibold text-slate-900">{(offers ?? []).length}</p>
         </div>
         <div className="border border-slate-200 rounded-lg p-5">
-          <p className="text-xs text-slate-400 uppercase tracking-widest font-semibold mb-1">Total notional</p>
-          <p className="text-3xl font-semibold text-slate-900">{fmt(totalNotional)}<span className="text-base text-slate-400 ml-1">uSTX</span></p>
+          <p className="text-xs text-slate-400 uppercase tracking-widest font-semibold mb-1">Margin calls on you</p>
+          <p className="text-3xl font-semibold text-slate-900">{active.filter((r) => r.myDeadline > 0).length}</p>
         </div>
       </div>
 
-      {/* Active positions */}
+      {/* Positions */}
       <section>
-        <h2 className="text-lg font-semibold text-slate-900 mb-1">Active positions</h2>
+        <h2 className="text-lg font-semibold text-slate-900 mb-1">Your swaps</h2>
         <p className="text-sm text-slate-500 mb-4">
-          Swaps that are currently running. Collateral balances update after each settled cycle.
+          Collateral moves after each settled cycle. If yours falls below two cycles of worst case, you get a margin call
+          and about {144} Bitcoin blocks to top up. Current Bitcoin block: {height ? fmt(height) : "…"}.
         </p>
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Swap</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Role</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Notional</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Rate</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Progress</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Your collateral</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</th>
-                <th className="px-4 py-3"></th>
+                {["Swap", "Role", "Notional", "Fixed rate", "Progress", "Your collateral", "Status", ""].map((h, i) => (
+                  <th key={i} className={`${i < 2 ? "text-left" : "text-right"} px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider`}>{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {loading && (
-                <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-400">Reading {CONTRACTS.core}…</td></tr>
+              {loading && <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-400">Reading {CONTRACTS.core}…</td></tr>}
+              {loadError && <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-red-600">Could not reach the contract: {loadError}</td></tr>}
+              {rows !== null && rows.length === 0 && (
+                <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-400">No swaps for this address yet.</td></tr>
               )}
-              {loadError && (
-                <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-red-600">Could not reach the contract: {loadError}</td></tr>
-              )}
-              {swaps !== null && swaps.length === 0 && (
-                <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-400">No positions for this address on chain yet.</td></tr>
-              )}
-              {(swaps ?? []).map((w) => {
-                const role = w.fixedParty === address ? "Fixed" : "Variable";
-                const pos = {
-                  swapId: w.id, role,
-                  notionalUstx: w.notionalUstx, fixedRate: w.fixedRate,
-                  durationCycles: w.durationCycles, cyclesSettled: w.cyclesSettled,
-                  fixedCollateral: w.fixedCollateral, variableCollateral: w.variableCollateral,
-                  status: STATUS[w.status] ?? "Unknown",
-                };
+              {(rows ?? []).map((r) => {
+                const w = r.swap;
+                const status = STATUS[w.status] ?? "Unknown";
+                const escrow = w.fixedCollateral + w.variableCollateral;
+                const anyExpired = (w.fixedCallDeadline > 0 && height > w.fixedCallDeadline)
+                  || (w.variableCallDeadline > 0 && height > w.variableCallDeadline);
+                const allSettled = w.cyclesSettled === w.durationCycles;
+                let statusBadge = <Badge text={status} color={w.status === 2 ? "amber" : "slate"} />;
+                if (w.status === 0 && r.myDeadline > 0) {
+                  statusBadge = height > r.myDeadline
+                    ? <Badge text="Margin call overdue" color="red" />
+                    : <Badge text={`Margin call: top up by block ${fmt(r.myDeadline)}`} color="amber" />;
+                } else if (w.status === 0 && r.otherDeadline > 0) {
+                  statusBadge = <Badge text="Counterparty margin-called" color="slate" />;
+                }
                 return (
-                <tr key={pos.swapId} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3.5 font-mono text-slate-500">#{pos.swapId}</td>
-                  <td className="px-4 py-3.5">
-                    <Badge
-                      text={pos.role}
-                      color={pos.role === "Fixed" ? "amber" : "slate"}
-                    />
-                  </td>
-                  <td className="px-4 py-3.5 text-right font-mono text-slate-800">{fmt(pos.notionalUstx)} uSTX</td>
-                  <td className="px-4 py-3.5 text-right font-mono text-slate-800">{pos.fixedRate.toLocaleString()}</td>
-                  <td className="px-4 py-3.5 text-right">
-                    <span className="text-slate-700 font-mono">
-                      {pos.cyclesSettled}/{pos.durationCycles}
-                    </span>
-                    <div className="w-16 h-1 bg-slate-200 rounded-full mt-1.5 ml-auto">
-                      <div
-                        className="h-1 bg-slate-600 rounded-full"
-                        style={{ width: `${(pos.cyclesSettled / pos.durationCycles) * 100}%` }}
-                      />
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5 text-right font-mono text-slate-800">
-                    {fmt(pos.role === "Fixed" ? pos.fixedCollateral : pos.variableCollateral)} sats
-                  </td>
-                  <td className="px-4 py-3.5 text-right">
-                    <Badge
-                      text={pos.status}
-                      color={pos.status === "Liquidated" ? "amber" : "slate"}
-                    />
-                  </td>
-                  <td className="px-4 py-3.5 text-right">
-                    {pos.status === "Active" && pos.cyclesSettled === pos.durationCycles ? (
-                      <button className="text-xs bg-green-600 text-white font-medium px-3 py-1.5 rounded hover:bg-green-700 transition-colors">
-                        Close swap
-                      </button>
-                    ) : (
-                      <span className="text-xs text-slate-400">
-                        {pos.status === "Active" ? "Settling…" : "—"}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              );})}
+                  <tr key={w.id} className="hover:bg-slate-50 transition-colors align-top">
+                    <td className="px-4 py-3.5 font-mono text-slate-500">#{w.id}</td>
+                    <td className="px-4 py-3.5"><Badge text={r.role} color={r.role === "Fixed" ? "amber" : "slate"} /></td>
+                    <td className="px-4 py-3.5 text-right font-mono text-slate-800">{ustxToStx(w.notionalUstx)} STX</td>
+                    <td className="px-4 py-3.5 text-right font-mono text-slate-800">{fmt(w.fixedRate)}</td>
+                    <td className="px-4 py-3.5 text-right font-mono text-slate-700">{w.cyclesSettled}/{w.durationCycles}</td>
+                    <td className="px-4 py-3.5 text-right font-mono text-slate-800">{fmt(r.myCollateral)} sats</td>
+                    <td className="px-4 py-3.5 text-right">{statusBadge}</td>
+                    <td className="px-4 py-3.5 text-right space-y-1.5 min-w-[11rem]">
+                      {w.status !== 0 && <span className="text-xs text-slate-400">—</span>}
+                      {w.status === 0 && r.myDeadline > 0 && r.shortfall > 0 && (
+                        <button disabled={!!busy} className={`${btn} bg-amber-600 text-white hover:bg-amber-700 block ml-auto`}
+                          onClick={() => call(`Top up swap #${w.id}`, "top-up", [w.id, r.shortfall],
+                                               { from: "me", amount: r.shortfall, exact: true })}>
+                          Top up {fmt(r.shortfall)} sats
+                        </button>
+                      )}
+                      {w.status === 0 && anyExpired && (
+                        <button disabled={!!busy} className={`${btn} bg-red-600 text-white hover:bg-red-700 block ml-auto`}
+                          onClick={() => call(`Liquidate swap #${w.id}`, "liquidate", [w.id],
+                                               { from: "contract", amount: escrow, exact: true })}>
+                          Liquidate
+                        </button>
+                      )}
+                      {w.status === 0 && !allSettled && (r.nextRateReady ? (
+                        <button disabled={!!busy} className={`${btn} bg-slate-900 text-white hover:bg-slate-700 block ml-auto`}
+                          onClick={() => call(`Settle swap #${w.id}`, "settle-cycle", [w.id],
+                                               { from: "contract", amount: escrow, exact: false })}>
+                          Settle cycle {r.nextCycle}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-400 block">Cycle {r.nextCycle}: rate not final yet</span>
+                      ))}
+                      {w.status === 0 && allSettled && (
+                        <button disabled={!!busy} className={`${btn} bg-green-600 text-white hover:bg-green-700 block ml-auto`}
+                          onClick={() => call(`Close swap #${w.id}`, "close-swap", [w.id],
+                                               { from: "contract", amount: escrow, exact: true })}>
+                          Close swap
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
         <p className="text-xs text-slate-400 mt-2">
-          P&L is the cumulative net of settlements so far. Positive = you have received more than you paid. The final balance is realised when you close the swap.
+          Anyone can settle, liquidate or close a swap; the buttons appear here for convenience. Rates come from PoX-5 through the trustless oracle once a cycle can no longer change.
         </p>
       </section>
 
@@ -202,49 +257,37 @@ export default function DashboardPage() {
       <section>
         <h2 className="text-lg font-semibold text-slate-900 mb-1">Your open offers</h2>
         <p className="text-sm text-slate-500 mb-4">
-          Offers you posted that are waiting for a variable party to accept. You can cancel any of these and reclaim your collateral.
+          Offers waiting for a variable party. Cancelling returns your deposit.
         </p>
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Offer ID</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Notional</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Fixed rate</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Duration</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Collateral locked</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Posted</th>
-                <th className="px-4 py-3"></th>
+                {["Offer", "Notional", "Fixed rate", "Duration", "Deposit", ""].map((h, i) => (
+                  <th key={i} className={`${i === 0 ? "text-left" : "text-right"} px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider`}>{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {offers !== null && offers.length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-400">No open offers posted from this address.</td></tr>
+                <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-400">No open offers from this address.</td></tr>
               )}
-              {(offers ?? []).map((o) => {
-                const offer = { offerId: o.id, notionalUstx: o.notionalUstx, fixedRate: o.fixedRate,
-                                durationCycles: o.durationCycles, collateralSats: o.collateralSats };
-                return (
-                <tr key={offer.offerId} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3.5 font-mono text-slate-500">#{offer.offerId}</td>
-                  <td className="px-4 py-3.5 text-right font-mono text-slate-800">{fmt(offer.notionalUstx)} uSTX</td>
+              {(offers ?? []).map((o) => (
+                <tr key={o.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3.5 font-mono text-slate-500">#{o.id}</td>
+                  <td className="px-4 py-3.5 text-right font-mono text-slate-800">{ustxToStx(o.notionalUstx)} STX</td>
+                  <td className="px-4 py-3.5 text-right font-mono text-slate-800">{fmt(o.fixedRate)}</td>
+                  <td className="px-4 py-3.5 text-right text-slate-600">{o.durationCycles} cycle{o.durationCycles > 1 ? "s" : ""}</td>
+                  <td className="px-4 py-3.5 text-right font-mono text-slate-800">{fmt(o.collateralSats)} sats</td>
                   <td className="px-4 py-3.5 text-right">
-                    <span className="bg-amber-50 text-amber-700 font-mono font-semibold text-xs px-2 py-0.5 rounded border border-amber-200">
-                      {offer.fixedRate.toLocaleString()}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3.5 text-right text-slate-600">
-                    {offer.durationCycles} cycle{offer.durationCycles > 1 ? "s" : ""}
-                  </td>
-                  <td className="px-4 py-3.5 text-right font-mono text-slate-800">{fmt(offer.collateralSats)} sats</td>
-                  <td className="px-4 py-3.5 text-slate-500">Open</td>
-                  <td className="px-4 py-3.5 text-right">
-                    <button className="text-xs text-red-500 hover:text-red-700 font-medium transition-colors">
+                    <button disabled={!!busy} className="text-xs text-red-500 hover:text-red-700 font-medium disabled:opacity-40"
+                      onClick={() => call(`Cancel offer #${o.id}`, "cancel-offer", [o.id],
+                                           { from: "contract", amount: o.collateralSats, exact: true })}>
                       Cancel &amp; reclaim
                     </button>
                   </td>
                 </tr>
-              );})}
+              ))}
             </tbody>
           </table>
         </div>
@@ -254,54 +297,46 @@ export default function DashboardPage() {
       <section>
         <h2 className="text-lg font-semibold text-slate-900 mb-1">Settlement history</h2>
         <p className="text-sm text-slate-500 mb-4">
-          Every cycle that has been settled. Each row is a single on-chain transaction — anyone can verify these on the Stacks Explorer.
+          Every settled cycle on your swaps. Each is an on-chain transaction anyone can verify.
         </p>
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Swap</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Cycle</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Fixed payment</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Variable payment</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Net</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Settled at</th>
+                {["Swap", "Cycle", "PoX-5 rate", "Rate used", "Fixed payment", "Variable payment", "Net"].map((h, i) => (
+                  <th key={i} className={`${i === 0 ? "text-left" : "text-right"} px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider`}>{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {settlements.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-400">No settled cycles yet.</td></tr>
+                <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-400">No settled cycles yet.</td></tr>
               )}
-              {settlements.map((r, i) => {
-                const net = Math.abs(r.fixedPayment - r.variablePayment);
-                const s = { swapId: r.swapId, cycle: r.cycle,
-                            fixedPayment: r.fixedPayment, variablePayment: r.variablePayment,
-                            netWinner: r.variablePayment >= r.fixedPayment ? "Variable" : "Fixed",
-                            net, settledAt: `Burn block ${fmt(r.settledAt)}` };
+              {settlements.map((s, i) => {
+                const winner = s.variablePayment >= s.fixedPayment ? "Variable" : "Fixed";
                 return (
-                <tr key={i} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3.5 font-mono text-slate-500">#{s.swapId}</td>
-                  <td className="px-4 py-3.5 text-right font-mono text-slate-600">{s.cycle}</td>
-                  <td className="px-4 py-3.5 text-right font-mono text-slate-800">{fmt(s.fixedPayment)} sats</td>
-                  <td className="px-4 py-3.5 text-right font-mono text-slate-800">{fmt(s.variablePayment)} sats</td>
-                  <td className="px-4 py-3.5 text-right">
-                    <span className={`font-mono font-semibold text-xs ${s.netWinner === "Fixed" ? "text-green-600" : "text-slate-500"}`}>
-                      {s.netWinner} +{fmt(s.net)} sats
-                    </span>
-                  </td>
-                  <td className="px-4 py-3.5 font-mono text-xs text-slate-400">{s.settledAt}</td>
-                </tr>
-              );})}
+                  <tr key={i} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3.5 font-mono text-slate-500">#{s.swapId}</td>
+                    <td className="px-4 py-3.5 text-right font-mono text-slate-600">{s.cycle}</td>
+                    <td className="px-4 py-3.5 text-right font-mono text-slate-800">{fmt(s.actualRate)}</td>
+                    <td className="px-4 py-3.5 text-right font-mono text-slate-800">
+                      {fmt(s.settlementRate)}{s.settlementRate < s.actualRate && <span className="text-xs text-amber-600 ml-1">(capped)</span>}
+                    </td>
+                    <td className="px-4 py-3.5 text-right font-mono text-slate-800">{fmt(s.fixedPayment)} sats</td>
+                    <td className="px-4 py-3.5 text-right font-mono text-slate-800">{fmt(s.variablePayment)} sats</td>
+                    <td className="px-4 py-3.5 text-right font-mono text-xs font-semibold text-slate-600">
+                      {winner} +{fmt(Math.abs(s.variablePayment - s.fixedPayment))} sats
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
         <p className="text-xs text-slate-400 mt-2">
-          Fixed payment = notional &times; fixed rate / 1,000,000.
-          Variable payment = notional &times; actual PoX rate / 1,000,000.
-          The net winner receives the difference.
+          Payments are notional × rate ÷ 1,000,000 STX. The rate used is PoX-5's rate, capped at 2× the fixed rate.
         </p>
       </section>
-
     </div>
   );
 }

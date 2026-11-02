@@ -5,6 +5,7 @@ import { useWallet } from "@/components/WalletProvider";
 import { NETWORK, CONTRACTS } from "@/lib/stacks";
 import { fetchOpenOffers, type Offer } from "@/lib/contract";
 import FAQAccordion from "@/components/FAQAccordion";
+import { initialMargin, maxCollateral, worstCasePerCycle, ustxToStx } from "@/lib/margin";
 
 function shortAddr(a: string) {
   return a.length > 14 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
@@ -18,9 +19,12 @@ function AcceptModal({ offer, onClose }: { offer: Offer; onClose: () => void }) 
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
-  const satRequired = Math.ceil((offer.notionalUstx * offer.fixedRate * offer.durationCycles) / 1_000_000_000_000 * 1.1);
-  const collateralNum = parseInt(collateral, 10);
-  const valid = !!collateralNum && collateralNum >= satRequired;
+  const N = BigInt(offer.notionalUstx), F = BigInt(offer.fixedRate), D = BigInt(offer.durationCycles);
+  const satRequired = Number(initialMargin(N, F, D));
+  const satMax = Number(maxCollateral(N, F, D));
+  const worst = Number(worstCasePerCycle(N, F));
+  const collateralNum = collateral === "" ? satRequired : parseInt(collateral, 10);
+  const valid = Number.isFinite(collateralNum) && collateralNum >= satRequired && collateralNum <= satMax;
 
   async function handleAccept() {
     if (!connected) { connect(); return; }
@@ -79,7 +83,7 @@ function AcceptModal({ offer, onClose }: { offer: Offer; onClose: () => void }) 
             <div className="bg-slate-50 rounded-xl border border-slate-200 divide-y divide-slate-200 mb-5 text-sm">
               <div className="flex justify-between px-4 py-3">
                 <span className="text-slate-500">Notional</span>
-                <span className="font-mono font-semibold text-slate-800">{fmt(offer.notionalUstx)} uSTX</span>
+                <span className="font-mono font-semibold text-slate-800">{ustxToStx(offer.notionalUstx)} STX</span>
               </div>
               <div className="flex justify-between px-4 py-3">
                 <span className="text-slate-500">Fixed rate (you owe)</span>
@@ -87,11 +91,15 @@ function AcceptModal({ offer, onClose }: { offer: Offer; onClose: () => void }) 
               </div>
               <div className="flex justify-between px-4 py-3">
                 <span className="text-slate-500">Duration</span>
-                <span className="font-mono font-semibold text-slate-800">{offer.durationCycles} cycles (~{offer.durationCycles * 2} wks)</span>
+                <span className="font-mono font-semibold text-slate-800">{offer.durationCycles} cycle{offer.durationCycles > 1 ? "s" : ""}</span>
+              </div>
+              <div className="flex justify-between px-4 py-3">
+                <span className="text-slate-500">Most you can owe in a cycle</span>
+                <span className="font-mono font-semibold text-slate-800">{fmt(worst)} sats</span>
               </div>
               <div className="flex justify-between px-4 py-3 bg-white rounded-b-xl">
-                <span className="text-slate-500">Min. collateral (110%)</span>
-                <span className="font-mono font-bold text-slate-900">{fmt(satRequired)} sats</span>
+                <span className="text-slate-500">Deposit (min – max)</span>
+                <span className="font-mono font-bold text-slate-900">{fmt(satRequired)} – {fmt(satMax)} sats</span>
               </div>
             </div>
 
@@ -101,19 +109,20 @@ function AcceptModal({ offer, onClose }: { offer: Offer; onClose: () => void }) 
             <input
               type="number"
               min={satRequired}
+              max={satMax}
               value={collateral}
               onChange={(e) => setCollateral(e.target.value)}
               placeholder={String(satRequired)}
               className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-900 mb-1"
             />
             <p className="text-xs text-slate-400 mb-5">
-              Must be ≥ {fmt(satRequired)} sats to meet the 110% maintenance margin.
+              Leave blank to deposit the minimum: two cycles of your worst case plus 10%. If a cycle takes you below two cycles of worst case, you'll get a margin call to top up.
             </p>
 
             <div className="flex gap-3">
               <button
                 onClick={handleAccept}
-                disabled={submitting || (!!collateral && !valid)}
+                disabled={submitting || !valid}
                 className="flex-1 bg-slate-900 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-slate-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {submitting ? "Confirming…" : connected ? "Accept swap" : "Connect wallet"}
@@ -132,23 +141,23 @@ function AcceptModal({ offer, onClose }: { offer: Offer; onClose: () => void }) 
 const faqs = [
   {
     q: "What does it mean to be the variable party?",
-    a: "You take the floating side of the swap. Each cycle you receive what the actual PoX rate earns on the notional, and you owe the fixed rate. If actual is higher than fixed — you profit. If lower — you pay the gap from your collateral.",
+    a: "You take the floating side. Each cycle you receive what PoX-5 actually paid on the notional and owe the fixed rate. If the actual rate is higher, you receive the difference; if it is lower, you pay it. The actual rate counts as at most 2× the fixed rate.",
   },
   {
-    q: "Why do I need to post collateral?",
-    a: "Because you might owe a payment if rates fall below the fixed rate. The collateral (held in the Rho contract) secures the fixed party against your potential liability. You need at least 110% of your total remaining obligation to open the position.",
+    q: "How much do I have to deposit?",
+    a: "At least 110% of two cycles of your worst case, and at most 110% of the whole swap's worst case. Your worst case in one cycle is the full fixed payment, if PoX-5 paid nothing. The fixed party follows the same rule.",
   },
   {
-    q: "What is the maintenance margin?",
-    a: "After every settlement, the contract checks that your remaining collateral is still above 110% of your remaining obligation. If it falls below, the contract liquidates — splitting the remaining collateral fairly between both parties immediately.",
+    q: "What is a margin call?",
+    a: "After every settlement, each side must still hold two cycles of worst case (or what is left, if fewer). If you fall below, you have about 144 Bitcoin blocks to top up from your dashboard. If you don't, anyone can liquidate the swap: you lose one cycle of worst case to the other side and get the rest back.",
   },
   {
-    q: "What happens to my collateral during the swap?",
-    a: "It stays locked in the smart contract. After each cycle settles, your balance adjusts up or down. When all cycles are done and the swap closes, whatever remains is returned to your wallet.",
+    q: "Where does the rate come from?",
+    a: "From PoX-5 itself. The trustless oracle reads the Tranche 2 rate for each cycle once PoX-5 can no longer change it. Nobody submits rates.",
   },
   {
     q: "Can I exit early?",
-    a: "Not in v1. Positions run until all cycles settle or a liquidation is triggered. Early exit and position transfers are planned for a future version.",
+    a: "Not in this version. A swap runs until every cycle settles, or until it is liquidated.",
   },
 ];
 
@@ -173,7 +182,7 @@ export default function MarketPage() {
         <div className="max-w-6xl mx-auto px-5 py-12">
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Open offers</h1>
           <p className="text-slate-500 text-sm max-w-2xl">
-            Each row is a fixed-party offer — someone who has locked STX and wants to lock in a fixed PoX rate.
+            Each row is a fixed-party offer: someone who wants to lock in a fixed PoX rate.
             By accepting, you take the variable side: you benefit when rates rise above the fixed rate, and pay the gap when they fall below it.
           </p>
         </div>
@@ -190,7 +199,7 @@ export default function MarketPage() {
             <p className="text-sm font-semibold text-amber-900 mb-1">How is the rate quoted?</p>
             <p className="text-sm text-amber-800 leading-relaxed">
               Rates are quoted as <strong>sats earned per 1,000,000 STX stacked, per cycle</strong>.
-              Mainnet cycle 142 paid 909,456 on that basis. A 500,000 rate on a 1,000,000 STX notional is a fixed payment of 500,000 sats per cycle. No price feed needed.
+              Mainnet cycle 142 paid 909,456 on that basis; testnet cycles have been paying around 6,000,000. A 6,000,000 rate on a 100,000 STX notional is a fixed payment of 600,000 sats per cycle. The rate is read from PoX-5 itself.
             </p>
           </div>
         </div>
@@ -205,7 +214,7 @@ export default function MarketPage() {
                 <th className="text-right px-5 py-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Notional</th>
                 <th className="text-right px-5 py-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Fixed rate</th>
                 <th className="text-right px-5 py-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Duration</th>
-                <th className="text-right px-5 py-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Collateral</th>
+                <th className="text-right px-5 py-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Fixed side deposit</th>
                 <th className="px-5 py-3.5" />
               </tr>
             </thead>
@@ -225,7 +234,7 @@ export default function MarketPage() {
                 <tr key={offer.id} className="hover:bg-slate-50 transition-colors group">
                   <td className="px-5 py-4 font-mono text-slate-400 text-xs">{offer.id}</td>
                   <td className="px-5 py-4 font-mono text-slate-600 text-xs">{shortAddr(offer.fixedParty)}</td>
-                  <td className="px-5 py-4 text-right font-mono text-slate-800">{fmt(offer.notionalUstx)} <span className="text-slate-400 text-xs">uSTX</span></td>
+                  <td className="px-5 py-4 text-right font-mono text-slate-800">{ustxToStx(offer.notionalUstx)} <span className="text-slate-400 text-xs">STX</span></td>
                   <td className="px-5 py-4 text-right">
                     <span className="bg-amber-50 text-amber-700 font-mono font-bold text-xs px-2.5 py-1 rounded-full border border-amber-200">
                       {offer.fixedRate.toLocaleString()}
@@ -233,7 +242,6 @@ export default function MarketPage() {
                   </td>
                   <td className="px-5 py-4 text-right text-slate-600 text-sm">
                     {offer.durationCycles} cycle{offer.durationCycles > 1 ? "s" : ""}
-                    <span className="text-slate-400 text-xs ml-1">(~{offer.durationCycles * 2}w)</span>
                   </td>
                   <td className="px-5 py-4 text-right font-mono text-slate-800">{fmt(offer.collateralSats)} <span className="text-slate-400 text-xs">sats</span></td>
                   <td className="px-5 py-4 text-right">

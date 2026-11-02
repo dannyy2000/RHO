@@ -24,10 +24,19 @@ All contracts are live and independently verifiable, deployed from `ST14V779KZH7
 
 | Contract | Explorer | Deployment tx |
 |----------|----------|---------------|
-| `rho-core-v4` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v4?chain=testnet) | [`014d109e…`](https://explorer.hiro.so/txid/0x014d109e5486f8261cb179e1ce4473bdbe63b727227ea8f3eea427e73450e854?chain=testnet) |
-| `pox-rate-oracle-v2` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.pox-rate-oracle-v2?chain=testnet) | [`ac0e8ff2…`](https://explorer.hiro.so/txid/0xac0e8ff21ce2dfec2339ee27aeb9eb8a561b21dfc12926d07ac5b68d93e300a5?chain=testnet) |
+| `rho-core-v5-1` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v5-1?chain=testnet) | [`0xcfbf6093…`](https://explorer.hiro.so/txid/0xcfbf609320c48ae98547785a2330c2ba5e24de2bfd6d04adee9572fd21e2c3df?chain=testnet) |
+| `pox-rate-oracle-trustless-v2` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.pox-rate-oracle-trustless-v2?chain=testnet) | [`0xfc10b5fb…`](https://explorer.hiro.so/txid/0xfc10b5fb30e19d9d6607af835d7428ea3b89b47525ab86dd02186845a01a5b64?chain=testnet) |
 | `mock-sbtc` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.mock-sbtc?chain=testnet) | [`ecf23cd2…`](https://explorer.hiro.so/txid/0xecf23cd2f3cd15904b5c8cd11bacea1f9b6eef3e814c0a25b71fb38a3161d82b?chain=testnet) |
 | `sip-010-trait` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.sip-010-trait?chain=testnet) | [`2f936d9b…`](https://explorer.hiro.so/txid/0x2f936d9b2d62a810cc8dbb29833fc81776d03fcda22ef806fbc451416d355001?chain=testnet) |
+
+`rho-core-v5-1` is `contracts/rho-core-v5.clar` as merged, including the rounding fix; its deployed source is byte-for-byte identical to the file. The website uses it. Three seeded offers were posted at testnet rates on 2026-11-02.
+
+**Superseded, kept for the evidence below:**
+
+| Contract | Explorer | Deployment tx |
+|----------|----------|---------------|
+| `rho-core-v4` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v4?chain=testnet) | [`014d109e…`](https://explorer.hiro.so/txid/0x014d109e5486f8261cb179e1ce4473bdbe63b727227ea8f3eea427e73450e854?chain=testnet) |
+| `pox-rate-oracle-v2` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.pox-rate-oracle-v2?chain=testnet) | [`ac0e8ff2…`](https://explorer.hiro.so/txid/0xac0e8ff21ce2dfec2339ee27aeb9eb8a561b21dfc12926d07ac5b68d93e300a5?chain=testnet) |
 
 **Milestone 1 contract — `rho-core-v5`, test deployment:**
 
@@ -35,7 +44,7 @@ All contracts are live and independently verifiable, deployed from `ST14V779KZH7
 |----------|----------|---------------|
 | `rho-core-v5` | [view contract](https://explorer.hiro.so/txid/ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v5?chain=testnet) | [`0x61211c71…`](https://explorer.hiro.so/txid/0x61211c71e83d928208dbe79c3f6705a5dc11255b267a4b53b7b5d03eb518907e?chain=testnet) |
 
-`rho-core-v5` settles from the trustless oracle and adds two-sided variation margin with a 2× rate ceiling (see `contracts/rho-core-v5.clar` and [Ceiling and margin in v5](#ceiling-and-margin-in-v5)). This deployment predates a one-sat rounding fix that fuzz testing found (the per-cycle worst case is now rounded up), so the release version will be deployed under a new name. The website still uses `rho-core-v4`.
+`rho-core-v5` settles from the trustless oracle and adds two-sided variation margin with a 2× rate ceiling (see `contracts/rho-core-v5.clar` and [Ceiling and margin in v5](#ceiling-and-margin-in-v5)). This deployment predates a one-sat rounding fix that fuzz testing found (the per-cycle worst case is now rounded up). It is superseded by `rho-core-v5-1`.
 
 **Trustless oracle:**
 
@@ -762,10 +771,11 @@ Copy `.env.example` to `.env.local` in the `frontend/` directory to override def
 # Network: "testnet" (default) or "mainnet"
 NEXT_PUBLIC_NETWORK=testnet
 
-# Contract addresses (defaults to Clarinet deployer address for local dev)
-NEXT_PUBLIC_CORE_CONTRACT=ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.rho-core
-NEXT_PUBLIC_ORACLE_CONTRACT=ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox-rate-oracle
-NEXT_PUBLIC_SBTC_CONTRACT=ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.mock-sbtc
+# Contract overrides. Defaults are the live testnet deployment:
+# rho-core-v5-1, pox-rate-oracle-trustless-v2 and mock-sbtc.
+NEXT_PUBLIC_RHO_CORE=ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.rho-core-v5-1
+NEXT_PUBLIC_RHO_ORACLE=ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.pox-rate-oracle-trustless-v2
+NEXT_PUBLIC_SBTC_CONTRACT=ST14V779KZH7Q62TXJ1G6HZBP23PJT6CE25RFESB7.mock-sbtc
 ```
 
 ---
@@ -886,7 +896,7 @@ Documented because a reader will find them anyway, and because they shape what t
 
 ### Margining is one-sided
 
-**Status:** applies to `rho-core-v4`, which the website still uses. Fixed in `rho-core-v5`: the settlement rate is capped at 2× the fixed rate, which gives the fixed party a known worst case per cycle equal to the variable party's. Both sides then post initial margin, are held to maintenance after every settlement, get a 144-block margin call to top up, and can be liquidated after it. See [Ceiling and margin in v5](#ceiling-and-margin-in-v5) below.
+**Status:** applies to `rho-core-v4`, which the website used until v5-1. Fixed in `rho-core-v5`: the settlement rate is capped at 2× the fixed rate, which gives the fixed party a known worst case per cycle equal to the variable party's. Both sides then post initial margin, are held to maintenance after every settlement, get a 144-block margin call to top up, and can be liquidated after it. See [Ceiling and margin in v5](#ceiling-and-margin-in-v5) below.
 
 The maintenance margin and automatic liquidation protect the **fixed** party only. The variable party has no equivalent protection, and the asymmetry runs the wrong way relative to risk:
 
