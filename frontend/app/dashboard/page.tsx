@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useWallet } from "@/components/WalletProvider";
 import { NETWORK, CONTRACTS } from "@/lib/stacks";
-import { fetchSwaps, fetchOpenOffers, fetchSettlements, fetchCycleRate, fetchBurnHeight,
+import { fetchSwaps, fetchOpenOffers, fetchSettlements, fetchCycleRate, fetchBurnHeight, waitForTx,
          type Swap, type Offer, type Settlement } from "@/lib/contract";
 import { maintenanceMargin, maxCollateral, ustxToStx, fmt } from "@/lib/margin";
 
@@ -102,7 +102,7 @@ export default function DashboardPage() {
       const { uintCV, Pc } = await import("@stacks/transactions");
       const who = Pc.principal(pc.from === "me" ? address! : CONTRACTS.core);
       const cond = (pc.exact ? who.willSendEq(pc.amount) : who.willSendLte(pc.amount)).ft(CONTRACTS.sbtc, "mock-sbtc");
-      await request("stx_callContract", {
+      const res = await request("stx_callContract", {
         contract: CONTRACTS.core,
         functionName,
         functionArgs: args.map((a) => uintCV(a)),
@@ -110,7 +110,13 @@ export default function DashboardPage() {
         postConditionMode: "deny",
         postConditions: [cond],
       });
-      setNotice(`${label}: transaction submitted. It can take a few minutes to confirm; press Refresh after that.`);
+      setBusy(null);
+      setNotice(`${label}: waiting for confirmation. Testnet blocks take a few minutes; this page updates by itself.`);
+      if (res.txid) {
+        const o = await waitForTx(res.txid);
+        setNotice(o.ok ? `${label}: confirmed.` : `${label}: failed on-chain with ${o.result}.`);
+        await load();
+      }
     } catch {
       setNotice(null);
     } finally {

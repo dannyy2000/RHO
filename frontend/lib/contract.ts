@@ -168,3 +168,21 @@ export async function fetchBurnHeight(): Promise<number> {
   const info = await (await fetch(`${API_URL}/v2/info`)).json();
   return Number(info.burn_block_height);
 }
+
+export type TxOutcome = { ok: boolean; result: string };
+
+/** Polls the API until a broadcast transaction is mined, then reports its result. */
+export async function waitForTx(txid: string, everyMs = 10_000): Promise<TxOutcome> {
+  const id = txid.startsWith("0x") ? txid : `0x${txid}`;
+  for (;;) {
+    try {
+      const tx = await (await fetch(`${API_URL}/extended/v1/tx/${id}`)).json();
+      if (tx.tx_status && tx.tx_status !== "pending") {
+        return { ok: tx.tx_status === "success", result: tx.tx_result?.repr ?? tx.tx_status };
+      }
+    } catch {
+      // Not indexed yet, or a network blip: keep polling.
+    }
+    await new Promise((r) => setTimeout(r, everyMs));
+  }
+}

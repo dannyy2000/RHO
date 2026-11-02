@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useWallet } from "@/components/WalletProvider";
 import { NETWORK, CONTRACTS } from "@/lib/stacks";
-import { fetchOpenOffers, type Offer } from "@/lib/contract";
+import { fetchOpenOffers, waitForTx, type Offer, type TxOutcome } from "@/lib/contract";
 import FAQAccordion from "@/components/FAQAccordion";
 import { initialMargin, maxCollateral, worstCasePerCycle, ustxToStx } from "@/lib/margin";
 
@@ -13,11 +13,12 @@ function shortAddr(a: string) {
 
 function fmt(n: number) { return n.toLocaleString(); }
 
-function AcceptModal({ offer, onClose }: { offer: Offer; onClose: () => void }) {
+function AcceptModal({ offer, onClose, onConfirmed }: { offer: Offer; onClose: () => void; onConfirmed: () => void }) {
   const { address, connected, connect } = useWallet();
   const [collateral, setCollateral] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
+  const [outcome, setOutcome] = useState<TxOutcome | null>(null);
 
   const N = BigInt(offer.notionalUstx), F = BigInt(offer.fixedRate), D = BigInt(offer.durationCycles);
   const satRequired = Number(initialMargin(N, F, D));
@@ -36,7 +37,7 @@ function AcceptModal({ offer, onClose }: { offer: Offer; onClose: () => void }) 
       // The deposit moves mock sBTC out of the caller's wallet. Without a
       // post-condition covering it, the wallet's default deny mode aborts the
       // transaction after the contract call succeeds.
-      await request("stx_callContract", {
+      const res = await request("stx_callContract", {
         contract: CONTRACTS.core,
         functionName: "accept-offer",
         functionArgs: [uintCV(offer.id), uintCV(collateralNum)],
@@ -45,6 +46,11 @@ function AcceptModal({ offer, onClose }: { offer: Offer; onClose: () => void }) 
         postConditions: [Pc.principal(address!).willSendEq(collateralNum).ft(CONTRACTS.sbtc, "mock-sbtc")],
       });
       setDone(true);
+      if (res.txid) {
+        const o = await waitForTx(res.txid);
+        setOutcome(o);
+        if (o.ok) onConfirmed();
+      }
     } catch {
       setSubmitting(false);
     }
@@ -60,8 +66,16 @@ function AcceptModal({ offer, onClose }: { offer: Offer; onClose: () => void }) 
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h2 className="text-base font-bold text-slate-900 mb-2">Transaction submitted</h2>
-            <p className="text-sm text-slate-500 mb-5">It can take a few minutes to confirm. Your position appears on the dashboard once it does.</p>
+            <h2 className="text-base font-bold text-slate-900 mb-2">
+              {outcome === null ? "Waiting for confirmation…" : outcome.ok ? "Swap started" : "Transaction failed"}
+            </h2>
+            <p className="text-sm text-slate-500 mb-5">
+              {outcome === null
+                ? "Testnet blocks take a few minutes. You can close this; the market updates once it confirms."
+                : outcome.ok
+                  ? "Confirmed on-chain. Your position is on the dashboard."
+                  : `The contract returned ${outcome.result}. Your deposit was not taken.`}
+            </p>
             <button onClick={onClose} className="bg-slate-900 text-white font-semibold px-5 py-2.5 rounded-xl text-sm w-full hover:bg-slate-700 transition-colors">
               Close
             </button>
@@ -166,13 +180,15 @@ export default function MarketPage() {
   const [offers, setOffers] = useState<Offer[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const [version, setVersion] = useState(0);
+
   useEffect(() => {
     let live = true;
     fetchOpenOffers()
       .then((o) => { if (live) setOffers(o); })
       .catch((e) => { if (live) setLoadError(String(e?.message ?? e)); });
     return () => { live = false; };
-  }, []);
+  }, [version]);
 
   return (
     <div className="bg-white min-h-screen">
@@ -272,7 +288,7 @@ export default function MarketPage() {
         </div>
       </div>
 
-      {selected && <AcceptModal offer={selected} onClose={() => setSelected(null)} />}
+      {selected && <AcceptModal offer={selected} onClose={() => setSelected(null)} onConfirmed={() => setVersion((v) => v + 1)} />}
     </div>
   );
 }
