@@ -5,7 +5,7 @@ const deployer = simnet.getAccounts().get("deployer")!;
 const POX5 = "ST000000000000000000002AMW42H.pox-5";
 
 function oracle(fn: string, args: any[] = []) {
-  return simnet.callReadOnlyFn("pox-rate-oracle-trustless", fn, args, deployer).result;
+  return simnet.callReadOnlyFn("pox-rate-oracle-trustless-v2", fn, args, deployer).result;
 }
 
 // Simnet has no distributed cycles, so every pox-5 entry here is zero. These
@@ -72,7 +72,7 @@ describe("trustless oracle: a cycle is final only once pox-5 can no longer credi
 
 describe("trustless oracle: no admin surface", () => {
   it("exposes no public function that can submit, set, or transfer anything", () => {
-    const iface = simnet.getContractsInterfaces().get(`${deployer}.pox-rate-oracle-trustless`)!;
+    const iface = simnet.getContractsInterfaces().get(`${deployer}.pox-rate-oracle-trustless-v2`)!;
     const publicFns = iface.functions.filter((f: any) => f.access === "public").map((f: any) => f.name);
     expect(publicFns).toStrictEqual([]);
   });

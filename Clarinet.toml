@@ -21,13 +21,18 @@ path = 'contracts/pox-rate-oracle.clar'
 clarity_version = 2
 epoch = '4.0'
 
-[contracts.pox-rate-oracle-trustless]
+[contracts.pox-rate-oracle-trustless-v2]
 path = 'contracts/pox-rate-oracle-trustless.clar'
 clarity_version = 2
 epoch = '4.0'
 
 [contracts.rho-core-v4]
 path = 'contracts/rho-core.clar'
+clarity_version = 2
+epoch = '4.0'
+
+[contracts.rho-core-v5]
+path = 'contracts/rho-core-v5.clar'
 clarity_version = 2
 epoch = '4.0'
 
